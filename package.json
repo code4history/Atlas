@@ -1,0 +1,42 @@
+{
+  "name": "@c4h/atlas",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Candidate CRS catalog lookup for Maplat V3.1.",
+  "module": "./dist/atlas.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/atlas.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "data/crs/custom-projections.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm run typecheck && BUILD_MODE=package vite build",
+    "crs:discover": "node scripts/generate-crs-manifest.cjs",
+    "crs:hydrate": "node scripts/hydrate-crs-authority.cjs",
+    "typecheck": "tsc --noEmit --allowImportingTsExtensions",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "proj-wasm": "0.1.0-alpha8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "jszip": "^3.10.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^3.2.4"
+  }
+}

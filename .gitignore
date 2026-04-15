@@ -1,0 +1,3 @@
+node_modules/
+.serena/project.local.yml
+.DS_Store
