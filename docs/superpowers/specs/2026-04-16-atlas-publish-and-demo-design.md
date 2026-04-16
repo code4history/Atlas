@@ -53,6 +53,17 @@ Atlas will use one Vite config with two modes.
 - repository metadata, bug tracker, homepage, keywords
 - `dev`, `build:demo`, `deploy`, `prepublishOnly`, `publish:npm`, `publish:npm:dry`
 
+## Runtime Boundary
+
+Atlas package publication and Atlas demo delivery intentionally use different runtime boundaries.
+
+- `src/` remains the publishable Atlas library and stays Node-only.
+- The npm package is not required to become browser-capable in this change.
+- Browser execution for `pnpm run dev` and GitHub Pages is handled by a demo-only adapter under `demo/`.
+- The demo adapter is responsible for browser-safe asset loading, candidate-data preparation, and lookup execution needed by the demo UI.
+
+This separation is deliberate. It preserves the package design for `pnpm publish` while avoiding demo-specific browser concerns in the public library surface.
+
 ## Demo UX
 
 ### Layout
@@ -130,13 +141,22 @@ Long text values are shown in scrollable `<pre>` blocks so the user can inspect 
 
 ### Candidate Lookup
 
-The demo will call the existing Atlas lookup API and keep filtering semantics inside the library where possible.
+The demo will not directly execute the Node-only Atlas package entrypoint in the browser.
+
+Instead, the demo will use a browser-focused adapter under `demo/` that mirrors Atlas lookup semantics for the subset of behavior needed by the demo.
 
 - `extent`: derived from current markers
 - `includeDeprecated`: from UI toggle
 - `onshoreOnly`: from UI toggle
 - `area`: undefined when area filter is off
 - `area`: selected country label or inferred auto area string when area filter is on
+
+The adapter must preserve Atlas-compatible filtering behavior:
+
+- candidate bbox contains extent
+- optional area substring filtering
+- optional deprecated inclusion
+- optional onshore-only filtering
 
 ### Area Filter
 
@@ -191,7 +211,7 @@ DOM-heavy visual behavior will be kept thin and verified manually unless a narro
 
 ## Risks And Mitigations
 
-- `proj-wasm` browser compatibility: keep demo integration thin and verify whether the current package can execute in the browser bundle. If not, add a clearly isolated demo-only data adapter rather than polluting `src/`.
+- divergence between Node package behavior and demo adapter behavior: keep filtering semantics shared conceptually and cover the demo adapter with focused tests around extent containment and UI-to-query mapping.
 - area-name substring mismatch: keep country mapping strings aligned with observed `areaName` values and cover them with narrow tests.
 - long WKT output making the page unwieldy: confine long fields to fixed-height scrollable panels.
 

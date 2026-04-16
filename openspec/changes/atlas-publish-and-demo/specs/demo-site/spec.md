@@ -10,11 +10,17 @@ Atlas MUST provide a demo site that runs locally through the standard Vite devel
 - **THEN** demo implementation code is stored outside `src/`
 - **AND** the repository root keeps `index.html` as the demo entry page
 
+#### Scenario: Browser demo runtime is isolated from the published package entrypoint
+
+- **WHEN** a maintainer inspects the demo architecture
+- **THEN** the browser-executed lookup logic is implemented under `demo/`
+- **AND** the demo does not require the published Atlas package entrypoint to be browser-capable
+
 #### Scenario: Marker clicks drive CRS candidate lookup
 
 - **WHEN** a user clicks one or more points on the demo map
 - **THEN** the demo derives an enclosing geographic extent from all current markers
-- **AND** Atlas candidate lookup runs against that extent
+- **AND** demo-side Atlas-compatible lookup runs against that extent
 - **AND** the candidate table updates to reflect the current marker set
 
 #### Scenario: Selecting a CRS reveals full details

@@ -26,3 +26,13 @@ Atlas MUST provide package documentation in English and Japanese following the d
 - **THEN** `README.md` exists in English
 - **AND** `README.ja.md` exists in Japanese
 - **AND** each README links to the other language variant
+
+### Requirement: Atlas Published Package May Remain Node-Only
+
+The Atlas package published to npmjs MAY remain Node-only for this change.
+
+#### Scenario: Publish configuration does not promise browser runtime support
+
+- **WHEN** a maintainer reviews the package design for this change
+- **THEN** the publishable package is allowed to target Node.js only
+- **AND** browser demo support is not required to come from the published package entrypoint
