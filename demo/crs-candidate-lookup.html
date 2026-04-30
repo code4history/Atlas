@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlas CRS Demo</title>
+  <link rel="stylesheet" href="./demo-shell.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body class="c4h-app">
+  <header class="c4h-header">
+    <a class="c4h-back-link" href="../index.html">← デモ一覧</a>
+    <h1>Atlas - Candidate CRS Demo</h1>
+    <div class="c4h-control-row">
+      <label class="atlas-toggle">
+        <input id="area-enabled" type="checkbox" checked>
+        <span>Area filter</span>
+      </label>
+      <label class="atlas-toggle">
+        <input id="deprecated-enabled" type="checkbox">
+        <span>Deprecated</span>
+      </label>
+      <label class="atlas-toggle">
+        <input id="onshore-only" type="checkbox">
+        <span>Onshore only</span>
+      </label>
+      <label class="atlas-toggle">
+        <input id="custom-enabled" type="checkbox" checked>
+        <span>Custom</span>
+      </label>
+      <div class="c4h-divider"></div>
+      <label>
+        Area:
+        <select id="area-mode">
+          <option value="auto">Auto</option>
+          <option value="japan" selected>Japan</option>
+          <option value="united_states">United States</option>
+          <option value="korea">Korea</option>
+          <option value="china">China</option>
+        </select>
+      </label>
+      <div class="c4h-divider"></div>
+      <button id="clear-button" class="c4h-header-btn c4h-danger-btn" type="button">Clear</button>
+    </div>
+    <span id="status" class="c4h-status">初期化中...</span>
+  </header>
+
+  <div class="c4h-instructions">
+    操作: クリックでマーカー追加 - 全マーカーの bbox で CRS 候補検索。候補選択で CRS bbox を表示。
+  </div>
+
+  <div class="c4h-panels">
+    <div class="c4h-panel-wrap">
+      <div id="map-label" class="c4h-panel-label">Slippy map</div>
+      <div id="map-board" class="c4h-panel atlas-map-board">
+        <div id="tile-layer" class="atlas-tile-layer" aria-hidden="true"></div>
+        <canvas id="map-canvas" width="720" height="460"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="atlas-results-grid">
+    <section class="c4h-card">
+      <header class="atlas-card-header">
+        <h2>Candidate CRS</h2>
+        <p id="result-count">No query yet.</p>
+      </header>
+      <div class="atlas-table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Area</th>
+            </tr>
+          </thead>
+          <tbody id="candidate-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="c4h-card">
+      <header class="atlas-card-header">
+        <h2>CRS Detail</h2>
+        <p id="detail-hint">Select one candidate row.</p>
+      </header>
+      <div id="detail-body" class="atlas-detail-body"></div>
+    </section>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

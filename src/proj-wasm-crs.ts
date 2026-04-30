@@ -1,6 +1,3 @@
-import * as proj from "proj-wasm";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import type { CandidateCrsExtent } from "./crs-types.ts";
 
 export interface ProjectedCrsInfo {
@@ -26,7 +23,10 @@ export interface ListProjectedCrsFromProjWasmOptions {
   onshoreOnly?: boolean;
   bboxPaddingDeg?: number;
   includeCustomProjections?: boolean;
+  userProjection?: string | URL;
+  /** @deprecated Use userProjection with a file://, https://, or data: URI. */
   userProjectionFile?: string;
+  projWasmAssetBaseUrl?: string | URL;
 }
 
 export interface ProjDatabaseRow {
@@ -61,14 +61,90 @@ interface CustomProjectionFile {
   projections: CustomProjectionDefinition[];
 }
 
+const PJ_TYPE_PROJECTED_CRS = 15;
+
 let initPromise: Promise<void> | undefined;
+let projWasmModulePromise: Promise<typeof import("proj-wasm")> | undefined;
 let builtInCustomProjectionPromise: Promise<CustomProjectionDefinition[]> | undefined;
+let projWasmAssetResolverInstalled = false;
 
 const BUILTIN_CUSTOM_PROJECTIONS_URL = new URL("../data/crs/custom-projections.json", import.meta.url);
+const PROJ_WASM_RUNTIME_ASSETS = [
+  "proj.db",
+  "proj.ini",
+  "proj-worker.mjs",
+  "fetch-worker.mjs",
+  "proj-emscripten.js",
+  "proj-emscripten.wasm",
+];
 
-function ensureProjInitialized(): Promise<void> {
+function isBrowserRuntime(): boolean {
+  return typeof (globalThis as { document?: unknown }).document !== "undefined";
+}
+
+function defaultRuntimeAssetBaseUrl(): URL {
+  const url = new URL(import.meta.url);
+  url.pathname = url.pathname.replace(/[^/]*$/, "");
+  url.search = "";
+  url.hash = "";
+  return url;
+}
+
+function installProjWasmAssetResolver(assetBaseUrl: string | URL = defaultRuntimeAssetBaseUrl()): void {
+  if (!isBrowserRuntime() || projWasmAssetResolverInstalled || typeof fetch !== "function") {
+    return;
+  }
+
+  const baseUrl = typeof assetBaseUrl === "string"
+    ? new URL(assetBaseUrl, import.meta.url)
+    : assetBaseUrl;
+  (globalThis as { __ATLAS_PROJ_WASM_ASSET_BASE_URL__?: string }).__ATLAS_PROJ_WASM_ASSET_BASE_URL__ = baseUrl.href;
+  const originalFetch = globalThis.fetch.bind(globalThis);
+
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input.url;
+    const locationHref = (globalThis as { location?: { href: string } }).location?.href ?? import.meta.url;
+    const pathname = new URL(url, locationHref).pathname;
+    const assetName = PROJ_WASM_RUNTIME_ASSETS.find((asset) => pathname.endsWith(`/${asset}`));
+
+    if (assetName) {
+      const assetUrl = new URL(assetName, baseUrl);
+      const response = await originalFetch(assetUrl, init);
+      if (assetName === "proj.db") {
+        const contentLength = Number(response.headers.get("content-length") ?? 0);
+        const byteLength = contentLength || (await response.clone().arrayBuffer()).byteLength;
+        if (byteLength < 1_000_000) {
+          throw new Error(
+            `Resolved proj.db from ${assetUrl.href}, but received only ${byteLength} bytes. ` +
+            "Restart the Vite dev server and verify that the proj-wasm runtime assets are served from the demo assets path.",
+          );
+        }
+      }
+      return response;
+    }
+
+    return originalFetch(input, init);
+  };
+
+  projWasmAssetResolverInstalled = true;
+}
+
+function loadProjWasm(): Promise<typeof import("proj-wasm")> {
+  if (!projWasmModulePromise) {
+    projWasmModulePromise = import("proj-wasm");
+  }
+
+  return projWasmModulePromise;
+}
+
+async function ensureProjInitialized(options?: Pick<ListProjectedCrsFromProjWasmOptions, "projWasmAssetBaseUrl">): Promise<void> {
   if (!initPromise) {
-    initPromise = proj.init();
+    installProjWasmAssetResolver(options?.projWasmAssetBaseUrl);
+    initPromise = loadProjWasm().then((proj) => proj.init({ workers: 1 }));
   }
 
   return initPromise!;
@@ -113,6 +189,7 @@ function padExtent(extent: CandidateCrsExtent, paddingDeg: number): CandidateCrs
 }
 
 async function expandProjectedCrsInfo(row: ProjDatabaseRow): Promise<ProjectedCrsInfo> {
+  const proj = await loadProjWasm();
   const pj = await proj.projCreateFromDatabase({
     auth_name: row.authName,
     code: row.code,
@@ -156,7 +233,7 @@ function createSyntheticProjRow(definition: CustomProjectionDefinition): ProjDat
     authName: definition.authority,
     code: definition.code,
     name: definition.name,
-    type: proj.PJ_TYPE_PROJECTED_CRS,
+    type: PJ_TYPE_PROJECTED_CRS,
     deprecated: definition.deprecated,
     bboxValid: true,
     westLonDegree: definition.bbox.west,
@@ -205,7 +282,7 @@ export function filterProjectedCrsRows(
   return rows.filter((row) => {
     const normalizedAreaName = row.areaName.toLowerCase();
 
-    if (row.type !== proj.PJ_TYPE_PROJECTED_CRS) return false;
+    if (row.type !== PJ_TYPE_PROJECTED_CRS) return false;
     if (!row.bboxValid) return false;
     if (!includeDeprecated && row.deprecated) return false;
     if (areaQuery && !normalizedAreaName.includes(areaQuery)) return false;
@@ -222,24 +299,49 @@ export function filterProjectedCrsRows(
   });
 }
 
-async function loadCustomProjectionFile(filePath: string | URL): Promise<CustomProjectionDefinition[]> {
-  const href = typeof filePath === "string"
-    ? filePath
-    : "href" in filePath
-      ? filePath.href
-      : String(filePath);
-  const raw = href.startsWith("data:")
-    ? (() => {
-      const match = href.match(/^data:.*?(;base64)?,(.*)$/);
-      if (!match) {
-        throw new Error(`Unsupported data URL for custom projection file: ${href}`);
-      }
+function decodeDataUrl(href: string): string {
+  const match = href.match(/^data:.*?(;base64)?,(.*)$/);
+  if (!match) {
+    throw new Error(`Unsupported data URL for custom projection resource: ${href}`);
+  }
 
-      return match[1]
-        ? Buffer.from(match[2], "base64").toString("utf8")
-        : decodeURIComponent(match[2]);
-    })()
-    : await readFile(filePath, "utf8");
+  if (match[1]) {
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(match[2], "base64").toString("utf8");
+    }
+
+    const binary = atob(match[2]);
+    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+  }
+
+  return decodeURIComponent(match[2]);
+}
+
+async function loadTextResource(resource: string | URL): Promise<string> {
+  const url = typeof resource === "string"
+    ? new URL(resource, import.meta.url)
+    : resource;
+  const href = url.href;
+
+  if (href.startsWith("data:")) {
+    return decodeDataUrl(href);
+  }
+
+  if (!href.startsWith("file:") && typeof fetch === "function") {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to load projection resource ${href}: ${response.status} ${response.statusText}`);
+    }
+    return response.text();
+  }
+
+  const nodeFsPromises = "node:fs/promises";
+  const { readFile } = await import(/* @vite-ignore */ nodeFsPromises) as typeof import("node:fs/promises");
+  return readFile(url, "utf8");
+}
+
+async function loadCustomProjectionFile(resource: string | URL): Promise<CustomProjectionDefinition[]> {
+  const raw = await loadTextResource(resource);
   const parsed = JSON.parse(raw) as CustomProjectionDefinition[] | CustomProjectionFile;
   return Array.isArray(parsed) ? parsed : parsed.projections;
 }
@@ -255,7 +357,8 @@ async function loadBuiltInCustomProjections(): Promise<CustomProjectionDefinitio
 export async function listProjectedCrsFromProjWasm(
   options: ListProjectedCrsFromProjWasmOptions,
 ): Promise<ProjectedCrsInfo[]> {
-  await ensureProjInitialized();
+  await ensureProjInitialized(options);
+  const proj = await loadProjWasm();
 
   const rows = (await proj.projGetCrsInfoListFromDatabase({})) as ProjDatabaseRow[];
   const filtered = filterProjectedCrsRows(rows, options);
@@ -276,8 +379,9 @@ export async function listProjectedCrsFromProjWasm(
     }
   }
 
-  if (options.userProjectionFile) {
-    const userDefinitions = await loadCustomProjectionFile(resolve(options.userProjectionFile));
+  const userProjectionResource = options.userProjection ?? options.userProjectionFile;
+  if (userProjectionResource) {
+    const userDefinitions = await loadCustomProjectionFile(userProjectionResource);
     for (const definition of userDefinitions) {
       const syntheticRow = createSyntheticProjRow(definition);
       if (!filterProjectedCrsRows([syntheticRow], options).length) continue;

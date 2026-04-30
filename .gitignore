@@ -1,3 +1,4 @@
 node_modules/
+dist-demo/
 .serena/project.local.yml
 .DS_Store

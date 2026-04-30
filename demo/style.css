@@ -1,0 +1,148 @@
+.atlas-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.atlas-map-board {
+  position: relative;
+  width: 720px;
+  height: 460px;
+}
+
+.atlas-tile-layer,
+#map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.atlas-tile-layer {
+  overflow: hidden;
+  background: #dce8ee;
+}
+
+.atlas-tile-layer img {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+#map-canvas {
+  display: block;
+  width: 720px;
+  height: 460px;
+  cursor: grab;
+  touch-action: none;
+}
+
+#map-canvas.dragging {
+  cursor: grabbing;
+}
+
+.atlas-results-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.atlas-card-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid #dde2ea;
+}
+
+.atlas-card-header h2 {
+  font-size: 13px;
+  color: #1a2744;
+}
+
+.atlas-card-header p {
+  font-size: 12px;
+  color: #667;
+  margin-top: 4px;
+}
+
+.atlas-table-scroll {
+  max-height: 420px;
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #eef0f4;
+  text-align: left;
+  vertical-align: top;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr.selected {
+  background: #e8f0fe;
+}
+
+.atlas-detail-body {
+  padding: 12px 14px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.atlas-detail-body dl {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 6px 10px;
+  margin-bottom: 14px;
+}
+
+.atlas-detail-body dt {
+  font-weight: 700;
+  color: #1a2744;
+}
+
+.atlas-detail-body dd {
+  margin: 0;
+  color: #444;
+}
+
+.atlas-detail-body pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8f9fb;
+  border: 1px solid #eef0f4;
+  padding: 8px 10px;
+  border-radius: 4px;
+  margin-top: 6px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.empty {
+  color: #667;
+}
+
+.error {
+  color: #c0392b;
+}
+
+@media (max-width: 1100px) {
+  .atlas-results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .atlas-map-board,
+  #map-canvas {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 36 / 23;
+  }
+}

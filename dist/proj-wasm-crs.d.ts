@@ -21,7 +21,10 @@ export interface ListProjectedCrsFromProjWasmOptions {
     onshoreOnly?: boolean;
     bboxPaddingDeg?: number;
     includeCustomProjections?: boolean;
+    userProjection?: string | URL;
+    /** @deprecated Use userProjection with a file://, https://, or data: URI. */
     userProjectionFile?: string;
+    projWasmAssetBaseUrl?: string | URL;
 }
 export interface ProjDatabaseRow {
     authName: string;

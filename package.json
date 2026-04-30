@@ -1,7 +1,10 @@
 {
   "name": "@c4h/atlas",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "description": "Candidate CRS catalog lookup for Maplat V3.1.",
   "module": "./dist/atlas.js",
@@ -16,18 +19,41 @@
     "dist",
     "src",
     "data/crs/custom-projections.json",
-    "README.md"
+    "README.md",
+    "README.ja.md"
   ],
   "engines": {
+    "pnpm": ">=10",
     "node": ">=20"
   },
   "scripts": {
+    "dev": "vite --host",
     "build": "pnpm run typecheck && BUILD_MODE=package vite build",
+    "build:demo": "vite build",
+    "verify:demo": "GITHUB_PAGES=true pnpm run build:demo && node scripts/verify-demo-pages-build.mjs",
     "crs:discover": "node scripts/generate-crs-manifest.cjs",
     "crs:hydrate": "node scripts/hydrate-crs-authority.cjs",
     "typecheck": "tsc --noEmit --allowImportingTsExtensions",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run test && pnpm run typecheck && pnpm run build && pnpm run verify:demo"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/code4history/Atlas.git"
+  },
+  "author": "Code for History",
+  "license": "Maplat Limited License 1.1",
+  "bugs": {
+    "url": "https://github.com/code4history/Atlas/issues"
+  },
+  "homepage": "https://code4history.github.io/Atlas/",
+  "keywords": [
+    "projection",
+    "GIS",
+    "CRS",
+    "Maplat",
+    "Atlas"
+  ],
   "dependencies": {
     "proj-wasm": "0.1.0-alpha8"
   },
