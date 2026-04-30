@@ -16,6 +16,28 @@ Atlas MUST be configured so maintainers can publish the package to npmjs using t
 - **WHEN** a maintainer runs the prepublish workflow
 - **THEN** Atlas runs the required verification commands before package publication
 
+### Requirement: Atlas Must Provide A Public Lookup Runtime For Node And Browsers
+
+Atlas MUST expose one public lookup runtime that can be used from both Node.js and browser environments.
+
+#### Scenario: Browser execution avoids Node-only dependencies
+
+- **WHEN** a browser caller uses the public Atlas lookup API
+- **THEN** the runtime does not require direct use of Node-only modules such as `node:fs/promises` or `node:path`
+
+#### Scenario: User-defined CRS resources are specified by URI
+
+- **WHEN** a caller provides user-defined CRS resources
+- **THEN** Atlas accepts URI-based resource identifiers rather than raw local path strings
+- **AND** `file:///` URIs are supported in Node.js
+- **AND** `https://` and `data:` URIs are supported where the runtime permits them
+
+#### Scenario: Package-distributed runtime assets are used in browsers
+
+- **WHEN** a browser caller uses the public Atlas lookup API
+- **THEN** Atlas resolves `proj-wasm` runtime assets from the package-distributed files
+- **AND** the browser path does not depend on demo-only substitute assets
+
 ### Requirement: Atlas Must Provide Bilingual Package Documentation
 
 Atlas MUST provide package documentation in English and Japanese following the documentation pattern used by sibling repositories.
@@ -26,13 +48,3 @@ Atlas MUST provide package documentation in English and Japanese following the d
 - **THEN** `README.md` exists in English
 - **AND** `README.ja.md` exists in Japanese
 - **AND** each README links to the other language variant
-
-### Requirement: Atlas Published Package May Remain Node-Only
-
-The Atlas package published to npmjs MAY remain Node-only for this change.
-
-#### Scenario: Publish configuration does not promise browser runtime support
-
-- **WHEN** a maintainer reviews the package design for this change
-- **THEN** the publishable package is allowed to target Node.js only
-- **AND** browser demo support is not required to come from the published package entrypoint

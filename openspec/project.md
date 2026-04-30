@@ -6,7 +6,7 @@ Atlas provides candidate CRS lookup for Maplat V3.1. It is the catalog and filte
 ## Tech Stack
 - TypeScript (planned)
 - `proj-wasm`-backed `proj.db` lookup plus optional JSON-defined custom projections
-- Node.js only runtime
+- Node.js and browser runtime support
 
 ## Domain Context
 - Inputs are `4326`-normalized map-side GCP extents.

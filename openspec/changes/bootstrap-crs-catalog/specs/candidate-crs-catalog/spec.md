@@ -27,6 +27,16 @@ Atlas SHALL source standard candidate CRS records from `proj.db` via `proj-wasm`
 - **WHEN** Atlas loads custom candidates
 - **THEN** it SHALL add the user-provided JSON projection definitions to the search set without mutating `proj.db`
 
+#### Scenario: Browser callers use the same lookup semantics
+- **GIVEN** a browser caller uses Atlas candidate lookup
+- **WHEN** Atlas loads `proj.db` and optional JSON sources
+- **THEN** it SHALL use runtime-safe asset loading rather than Node-only filesystem APIs
+
+#### Scenario: User-defined resources are identified by URI
+- **GIVEN** user-defined candidate CRS records are needed
+- **WHEN** Atlas loads custom candidates
+- **THEN** it SHALL accept URI-based resource identifiers instead of only raw local path strings
+
 ### Requirement: Candidate Filtering SHALL Use bbox_4326 Contains Semantics
 Atlas SHALL filter candidate CRS records by requiring the input extent to be fully contained by the candidate CRS area-of-use extent.
 
