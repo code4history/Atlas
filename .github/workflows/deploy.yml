@@ -31,6 +31,8 @@ jobs:
         run: pnpm install
       - name: Build demo site
         run: pnpm run verify:demo
+      - name: Verify packed browser runtime
+        run: pnpm run verify:packed-browser
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

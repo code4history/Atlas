@@ -32,7 +32,7 @@ let dragState = null;
 
 function loadAtlasRuntime() {
   if (!atlasModulePromise) {
-    atlasModulePromise = import("../src/index.ts");
+    atlasModulePromise = import("@c4h/atlas");
   }
   return atlasModulePromise;
 }

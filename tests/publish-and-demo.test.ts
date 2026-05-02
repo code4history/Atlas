@@ -15,11 +15,13 @@ describe("publish and demo packaging", () => {
 
     expect(packageJson.private).toBe(false);
     expect(packageJson.publishConfig?.access).toBe("public");
-    expect(packageJson.scripts?.dev).toBeDefined();
+    expect(packageJson.scripts?.dev).toContain("build:package-runtime");
     expect(packageJson.scripts?.["build:demo"]).toBeDefined();
     expect(packageJson.scripts?.["verify:demo"]).toContain("verify-demo-pages-build.mjs");
+    expect(packageJson.scripts?.["verify:packed-browser"]).toContain("verify-packed-browser-runtime.mjs");
     expect(packageJson.scripts?.prepublishOnly).toContain("pnpm run test");
     expect(packageJson.scripts?.prepublishOnly).toContain("pnpm run verify:demo");
+    expect(packageJson.scripts?.prepublishOnly).toContain("pnpm run verify:packed-browser");
     expect(packageJson.repository?.type).toBe("git");
     expect(packageJson.repository?.url).toMatch(/github\.com/);
     expect(packageJson.files).toContain("README.ja.md");
@@ -47,7 +49,7 @@ describe("publish and demo packaging", () => {
   it("keeps demo shell independent from lookup runtime at module load", async () => {
     const mainJs = await readFile(new URL("../demo/main.js", import.meta.url), "utf8");
     expect(mainJs).not.toMatch(/^import\s+\{\s*listProjectedCrsForDemo\s*\}/m);
-    expect(mainJs).toContain('import("../src/index.ts")');
+    expect(mainJs).toContain('import("@c4h/atlas")');
     expect(mainJs).toContain("listProjectedCrsFromProjWasm");
     expect(mainJs).toContain("initializeProjWasmRuntime");
     expect(mainJs).toContain("runtimeReady");
@@ -104,6 +106,7 @@ describe("publish and demo packaging", () => {
 
   it("has artifact-level Pages verification", async () => {
     const script = await readFile(new URL("../scripts/verify-demo-pages-build.mjs", import.meta.url), "utf8");
+    const packedScript = await readFile(new URL("../scripts/verify-packed-browser-runtime.mjs", import.meta.url), "utf8");
     const ci = await readFile(new URL("../.github/workflows/test.yml", import.meta.url), "utf8");
     const deploy = await readFile(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
 
@@ -111,7 +114,12 @@ describe("publish and demo packaging", () => {
     expect(script).toContain("/Atlas/assets/");
     expect(script).toContain("origin-rooted /assets/");
     expect(script).toContain("unexpectedly small");
+    expect(packedScript).toContain('["pack", "--json"]');
+    expect(packedScript).toContain('from "@c4h/atlas"');
+    expect(packedScript).toContain("dist/atlas.js");
+    expect(packedScript).toContain("dist/proj.db");
     expect(ci).toContain("pnpm run verify:demo");
+    expect(ci).toContain("pnpm run verify:packed-browser");
     expect(deploy).toContain("pnpm run verify:demo");
   });
 });

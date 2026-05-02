@@ -27,15 +27,17 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "vite --host",
-    "build": "pnpm run typecheck && BUILD_MODE=package vite build",
-    "build:demo": "vite build",
+    "dev": "pnpm run build:package-runtime && vite --host",
+    "build": "pnpm run build:package-runtime",
+    "build:package-runtime": "pnpm run typecheck && BUILD_MODE=package vite build",
+    "build:demo": "pnpm run build:package-runtime && vite build",
     "verify:demo": "GITHUB_PAGES=true pnpm run build:demo && node scripts/verify-demo-pages-build.mjs",
+    "verify:packed-browser": "pnpm run build:package-runtime && node scripts/verify-packed-browser-runtime.mjs",
     "crs:discover": "node scripts/generate-crs-manifest.cjs",
     "crs:hydrate": "node scripts/hydrate-crs-authority.cjs",
     "typecheck": "tsc --noEmit --allowImportingTsExtensions",
     "test": "vitest run",
-    "prepublishOnly": "pnpm run test && pnpm run typecheck && pnpm run build && pnpm run verify:demo"
+    "prepublishOnly": "pnpm run test && pnpm run typecheck && pnpm run build && pnpm run verify:demo && pnpm run verify:packed-browser"
   },
   "repository": {
     "type": "git",
