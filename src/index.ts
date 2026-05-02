@@ -10,10 +10,14 @@ export {
   isProjectedPrjPath,
   isScopeIncluded,
 } from "./crs-seed.ts";
-export { listProjectedCrsFromProjWasm } from "./proj-wasm-crs.ts";
+export {
+  initializeProjWasmRuntime,
+  listProjectedCrsFromProjWasm,
+} from "./proj-wasm-crs.ts";
 
 export type { CandidateCrsExtent } from "./crs-types.ts";
 export type {
+  InitializeProjWasmRuntimeOptions,
   ListProjectedCrsFromProjWasmOptions,
   ProjectedCrsInfo,
 } from "./proj-wasm-crs.ts";

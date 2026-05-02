@@ -41,6 +41,14 @@
   cursor: grabbing;
 }
 
+.atlas-map-board.is-disabled {
+  opacity: 0.62;
+}
+
+.atlas-map-board.is-disabled #map-canvas {
+  cursor: wait;
+}
+
 .atlas-results-grid {
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);

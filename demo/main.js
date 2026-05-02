@@ -16,8 +16,9 @@ const state = {
   markers: [],
   rows: [],
   selectedId: null,
+  runtimeReady: false,
   queryState: "idle",
-  status: "Click the map to add markers. Drag to pan, wheel to zoom.",
+  status: "Initializing PROJ runtime...",
   error: null,
   areaFilterEnabled: true,
   areaMode: "japan",
@@ -273,7 +274,16 @@ function renderStatus() {
   document.getElementById("status").textContent = state.error ?? state.status;
 }
 
+function renderInteractivity() {
+  const disabled = !state.runtimeReady;
+  document.getElementById("map-board").classList.toggle("is-disabled", disabled);
+  for (const element of document.querySelectorAll("#area-enabled, #deprecated-enabled, #onshore-only, #custom-enabled, #area-mode, #clear-button")) {
+    element.disabled = disabled;
+  }
+}
+
 function render() {
+  renderInteractivity();
   renderMap();
   renderTable();
   renderDetail();
@@ -331,6 +341,7 @@ function eventToCanvasPoint(event) {
 function bindMap() {
   const canvas = document.getElementById("map-canvas");
   canvas.onpointerdown = (event) => {
+    if (!state.runtimeReady) return;
     canvas.setPointerCapture(event.pointerId);
     canvas.classList.add("dragging");
     dragState = {
@@ -342,6 +353,7 @@ function bindMap() {
   };
 
   canvas.onpointermove = (event) => {
+    if (!state.runtimeReady) return;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     const [lastX, lastY] = dragState.lastClient;
     const dx = event.clientX - lastX;
@@ -357,6 +369,7 @@ function bindMap() {
   };
 
   canvas.onpointerup = async (event) => {
+    if (!state.runtimeReady) return;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     canvas.releasePointerCapture(event.pointerId);
     canvas.classList.remove("dragging");
@@ -369,6 +382,7 @@ function bindMap() {
   };
 
   canvas.onwheel = (event) => {
+    if (!state.runtimeReady) return;
     event.preventDefault();
     const beforePoint = eventToCanvasPoint(event);
     const beforeLonLat = screenToLonLat(beforePoint);
@@ -422,10 +436,28 @@ function bindControls() {
   };
 }
 
+async function initializeRuntime() {
+  try {
+    const { initializeProjWasmRuntime } = await loadAtlasRuntime();
+    await initializeProjWasmRuntime({
+      projWasmAssetBaseUrl: projWasmAssetBaseUrl(),
+    });
+    state.runtimeReady = true;
+    state.status = "Ready. Click the map to add markers. Drag to pan, wheel to zoom.";
+  } catch (error) {
+    state.runtimeReady = false;
+    state.queryState = "error";
+    state.error = error instanceof Error ? error.message : String(error);
+  }
+
+  render();
+}
+
 function boot() {
   bindMap();
   bindControls();
   render();
+  void initializeRuntime();
 }
 
 boot();

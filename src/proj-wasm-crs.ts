@@ -29,6 +29,10 @@ export interface ListProjectedCrsFromProjWasmOptions {
   projWasmAssetBaseUrl?: string | URL;
 }
 
+export interface InitializeProjWasmRuntimeOptions {
+  projWasmAssetBaseUrl?: string | URL;
+}
+
 export interface ProjDatabaseRow {
   authName: string;
   code: string;
@@ -297,6 +301,12 @@ export function filterProjectedCrsRows(
       north: row.northLatDegree,
     }, bboxPaddingDeg), options.extent);
   });
+}
+
+export async function initializeProjWasmRuntime(
+  options: InitializeProjWasmRuntimeOptions = {},
+): Promise<void> {
+  await ensureProjInitialized(options);
 }
 
 function decodeDataUrl(href: string): string {

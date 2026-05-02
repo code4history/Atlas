@@ -49,6 +49,8 @@ describe("publish and demo packaging", () => {
     expect(mainJs).not.toMatch(/^import\s+\{\s*listProjectedCrsForDemo\s*\}/m);
     expect(mainJs).toContain('import("../src/index.ts")');
     expect(mainJs).toContain("listProjectedCrsFromProjWasm");
+    expect(mainJs).toContain("initializeProjWasmRuntime");
+    expect(mainJs).toContain("runtimeReady");
     expect(mainJs).toContain("projWasmAssetBaseUrl");
     expect(mainJs).toContain('new URL("assets/", pageRoot)');
   });

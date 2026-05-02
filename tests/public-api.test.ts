@@ -6,6 +6,8 @@ describe("public API alignment", () => {
   it("does not export DuckDB-specific APIs", async () => {
     const atlas = await import("../src/index.ts");
 
+    expect("initializeProjWasmRuntime" in atlas).toBe(true);
+    expect("listProjectedCrsFromProjWasm" in atlas).toBe(true);
     expect("CandidateCrsStore" in atlas).toBe(false);
     expect("openCandidateCrsStore" in atlas).toBe(false);
     expect("SYSTEM_CRS_DB_FILENAME" in atlas).toBe(false);

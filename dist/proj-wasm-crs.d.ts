@@ -26,6 +26,9 @@ export interface ListProjectedCrsFromProjWasmOptions {
     userProjectionFile?: string;
     projWasmAssetBaseUrl?: string | URL;
 }
+export interface InitializeProjWasmRuntimeOptions {
+    projWasmAssetBaseUrl?: string | URL;
+}
 export interface ProjDatabaseRow {
     authName: string;
     code: string;
@@ -53,4 +56,5 @@ export interface CustomProjectionDefinition {
     source?: string[];
 }
 export declare function filterProjectedCrsRows(rows: ProjDatabaseRow[], options: ListProjectedCrsFromProjWasmOptions): ProjDatabaseRow[];
+export declare function initializeProjWasmRuntime(options?: InitializeProjWasmRuntimeOptions): Promise<void>;
 export declare function listProjectedCrsFromProjWasm(options: ListProjectedCrsFromProjWasmOptions): Promise<ProjectedCrsInfo[]>;
