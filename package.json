@@ -44,7 +44,7 @@
     "url": "git+https://github.com/code4history/Atlas.git"
   },
   "author": "Code for History",
-  "license": "Maplat Limited License 1.1",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/code4history/Atlas/issues"
   },
