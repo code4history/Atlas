@@ -13,6 +13,7 @@ export {
 export {
   initializeProjWasmRuntime,
   listProjectedCrsFromProjWasm,
+  transformLonLatArrayToProjected,
 } from "./proj-wasm-crs.ts";
 
 export type { CandidateCrsExtent } from "./crs-types.ts";
@@ -20,6 +21,7 @@ export type {
   InitializeProjWasmRuntimeOptions,
   ListProjectedCrsFromProjWasmOptions,
   ProjectedCrsInfo,
+  TransformLonLatToProjectedOptions,
 } from "./proj-wasm-crs.ts";
 export type {
   CandidateAuthorityId,

@@ -33,6 +33,10 @@ export interface InitializeProjWasmRuntimeOptions {
   projWasmAssetBaseUrl?: string | URL;
 }
 
+export interface TransformLonLatToProjectedOptions {
+  projWasmAssetBaseUrl?: string | URL;
+}
+
 export interface ProjDatabaseRow {
   authName: string;
   code: string;
@@ -66,6 +70,15 @@ interface CustomProjectionFile {
 }
 
 const PJ_TYPE_PROJECTED_CRS = 15;
+
+/**
+ * `transformLonLatArrayToProjected` の source 側 CRS（m2a-t1 設計 §4.2 step 3）。
+ *
+ * proj 文字列で pipeline を作ると、CRS の coordinate system 自体が `[Easting, Northing]`
+ * として構築される（設計 §3.2 の実測）。authority 文字列（`EPSG:4326`）を source にすると
+ * 入力が `[lat, lon]` 順を要求され、誤ると `Infinity` が返る ∴ 文字列経路に固定する。
+ */
+const LONLAT_WGS84_PROJ_STRING = "+proj=longlat +datum=WGS84 +no_defs +type=crs";
 
 let initPromise: Promise<void> | undefined;
 let projWasmModulePromise: Promise<typeof import("proj-wasm")> | undefined;
@@ -403,4 +416,123 @@ export async function listProjectedCrsFromProjWasm(
   const results = [...resultMap.values()];
   results.sort((left, right) => left.id.localeCompare(right.id));
   return results;
+}
+
+/** `projCsGetAxisInfo` の返却（proj-wasm 0.1.0-alpha8 の実測形状）。 */
+interface ProjAxisInfo {
+  name: string;
+  abbreviation: string;
+  direction: string;
+  unitConvFactor: number;
+  unitName: string;
+  unitAuthName: string;
+  unitCode: string;
+}
+
+/**
+ * target が「軸が east / north の順で、両軸とも metre の 2 次元 CRS」であるかを機構で検証する
+ * （m2a-t1 設計 §4.2 step 2 / DEV-1）。
+ *
+ * - pipeline（CoordinateOperation）を `projCreateCrsToCrs` の target に渡しても **throw しない**。
+ *   コンソールエラーだけを出して `undefined` を resolve し、それを `projTransArray` へ渡すと
+ *   wasm ヒープ故障になる（設計 §3.3 の実測）∴ 生成前に弾く必要がある。
+ * - native 単位が metre でない候補は単位換算せず変換不能へ落とす（m1-t1 からの申し送り）。
+ */
+async function isEastNorthMetreCrs(
+  proj: typeof import("proj-wasm"),
+  definition: string,
+): Promise<boolean> {
+  let pj: unknown;
+  try {
+    pj = await proj.projCreate({ definition });
+  } catch {
+    return false;
+  }
+
+  if (!(await proj.projIsCrs({ obj: pj }))) return false;
+
+  const cs = await proj.projCrsGetCoordinateSystem({ crs: pj });
+  if ((await proj.projCsGetAxisCount({ cs })) !== 2) return false;
+
+  const axes: ProjAxisInfo[] = [
+    (await proj.projCsGetAxisInfo({ cs, index: 0 })) as ProjAxisInfo,
+    (await proj.projCsGetAxisInfo({ cs, index: 1 })) as ProjAxisInfo,
+  ];
+
+  if (axes[0]?.direction !== "east" || axes[1]?.direction !== "north") return false;
+
+  return axes.every((axis) => axis.unitConvFactor === 1 && axis.unitName === "metre");
+}
+
+/**
+ * lon/lat（度・lon-lat 順）の点列を、target CRS の投影座標 `[easting, northing]` へ一括変換する。
+ *
+ * m2a-t1 設計 §4 の契約:
+ * - (3) 返却は常に `[easting, northing]` 順である（proj 文字列 pipeline により機構で保証する）。
+ * - (4) 空入力・業務的に変換不能な target は `null`。
+ * - (5) 部分成功はしない。入力または出力に非有限成分が 1 つでもあれば全体 `null`。
+ * - (7) throw は実装 bug のときだけ。業務的失敗はすべて `null` へ落ちる。
+ * - (8) 出力は入力と同数・同順。
+ *
+ * 本 export は **`lonlat_deg` / lon-lat 順の入力専用**である（設計 K3）。`planar_xy` 入力の
+ * 実 engine 経路は本サイクルの範囲外である。
+ */
+export async function transformLonLatArrayToProjected(
+  target: Pick<ProjectedCrsInfo, "id" | "proj4">,
+  points: ReadonlyArray<readonly [number, number]>,
+  options?: TransformLonLatToProjectedOptions,
+): Promise<Array<[number, number]> | null> {
+  // step 1: 入力検査（契約 (4)(5)）
+  if (points.length === 0) return null;
+  for (const point of points) {
+    if (!Number.isFinite(point[0]) || !Number.isFinite(point[1])) return null;
+  }
+
+  await ensureProjInitialized(options);
+  const proj = await loadProjWasm();
+
+  // step 2: target 検証（DEV-1。CRS であること・軸順 east/north・両軸 metre）
+  if (!(await isEastNorthMetreCrs(proj, target.proj4))) return null;
+
+  // step 3: pipeline 生成（proj 文字列 → proj 文字列。軸順は生成方法で決まる。設計 §3.2）
+  let operation: unknown;
+  try {
+    operation = await proj.projCreateCrsToCrs({
+      source_crs: LONLAT_WGS84_PROJ_STRING,
+      target_crs: target.proj4,
+    });
+  } catch {
+    return null;
+  }
+
+  // step 4: 一括変換
+  let coords: unknown;
+  try {
+    coords = await proj.coordArray(points.length);
+    await proj.setCoords(
+      coords,
+      points.map(([lon, lat]) => [lon, lat, 0, 0] as const),
+    );
+    await proj.projTransArray({
+      p: operation,
+      direction: proj.PJ_FWD,
+      n: points.length,
+      coord: coords,
+    });
+  } catch {
+    return null;
+  }
+
+  // step 5: 出力検査（1 点でも非有限なら全体 null。契約 (5)）
+  const result: Array<[number, number]> = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const coordinate = await proj.getCoords(coords, index);
+    const easting = coordinate?.[0];
+    const northing = coordinate?.[1];
+    if (!Number.isFinite(easting) || !Number.isFinite(northing)) return null;
+    result.push([easting as number, northing as number]);
+  }
+
+  // step 6: 入力と同数・同順で返却（契約 (8)）
+  return result;
 }
