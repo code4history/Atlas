@@ -48,6 +48,33 @@ const rows = await listProjectedCrsFromProjWasm({
 console.log(rows.map((row) => row.id));
 ```
 
+`transformLonLatArrayToProjected` converts a lon/lat array (degrees, lon-lat order) into the
+projected coordinates of a candidate CRS. The return value is always `[easting, northing]`,
+in the same order and count as the input, or `null`.
+
+```ts
+import { listProjectedCrsFromProjWasm, transformLonLatArrayToProjected } from "@c4h/atlas";
+
+const [target] = await listProjectedCrsFromProjWasm({
+  extent: { west: 135.6, south: 34.9, east: 135.9, north: 35.1 },
+  area: "Japan",
+  onshoreOnly: true,
+});
+
+const projected = await transformLonLatArrayToProjected(target, [
+  [135.6, 34.9],
+  [135.9, 35.1],
+]);
+
+console.log(projected); // [[easting, northing], [easting, northing]] or null
+```
+
+`null` means "not transformable as a business outcome". It is returned for an empty input,
+for a non-finite input or output component (no partial success), and for a target whose
+definition is not a CRS, whose axes are not east/north, or whose units are not metres
+(units are never converted). Exceptions are reserved for implementation bugs.
+The function accepts lon/lat degree input only.
+
 ## Development
 
 - `pnpm run dev`: start the local demo site

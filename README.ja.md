@@ -48,6 +48,31 @@ const rows = await listProjectedCrsFromProjWasm({
 console.log(rows.map((row) => row.id));
 ```
 
+`transformLonLatArrayToProjected` は lon/lat（度・lon-lat 順）の点列を候補 CRS の投影座標へ
+変換します。返り値は常に `[easting, northing]` 順で、入力と同数・同順の配列か `null` です。
+
+```ts
+import { listProjectedCrsFromProjWasm, transformLonLatArrayToProjected } from "@c4h/atlas";
+
+const [target] = await listProjectedCrsFromProjWasm({
+  extent: { west: 135.6, south: 34.9, east: 135.9, north: 35.1 },
+  area: "Japan",
+  onshoreOnly: true,
+});
+
+const projected = await transformLonLatArrayToProjected(target, [
+  [135.6, 34.9],
+  [135.9, 35.1],
+]);
+
+console.log(projected); // [[easting, northing], [easting, northing]] または null
+```
+
+`null` は「業務的に変換不能」を意味します。空入力、入力または出力に非有限成分がある場合
+（部分成功はしません）、および target の定義が CRS でない・軸が east/north でない・単位が
+metre でない場合に返します（**単位換算はしません**）。throw は実装 bug のときだけです。
+入力は lon/lat の度数のみを受け付けます。
+
 ## 開発
 
 - `pnpm run dev`: ローカル demo site を起動
