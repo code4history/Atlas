@@ -121,5 +121,9 @@ describe("publish and demo packaging", () => {
     expect(ci).toContain("pnpm run verify:demo");
     expect(ci).toContain("pnpm run verify:packed-browser");
     expect(deploy).toContain("pnpm run verify:demo");
+    // m3-t1/K22: 起動ブランチの master 化を機械で固定する（目視 diff に頼らない）。
+    // Atlas 内で閉じる検査であること自体が要件である — 3 repo を独立公開した後、
+    // Teiresias 側から相対パスで Atlas を assert する形は解決不能になるため。
+    expect(deploy).toContain("- master");
   });
 });
