@@ -55,6 +55,13 @@ describe("publish and demo packaging", () => {
     expect(mainJs).toContain("runtimeReady");
     expect(mainJs).toContain("projWasmAssetBaseUrl");
     expect(mainJs).toContain('new URL("assets/", pageRoot)');
+
+    // m3-t3/AC-7: 日付変更線跨ぎ bbox の是正（HR-m3-011）が demo/main.js から実際に呼ばれていること。
+    // 純関数側の算術は tests/demo-map-geometry.test.ts が検査する ∴ ここは「結線」だけを固定する。
+    expect(mainJs).toContain('from "./map-geometry.ts"');
+    expect(mainJs).not.toContain("Math.abs(right - left)"); // 巡回性を持たない旧算術
+    expect(mainJs).toContain("bboxScreenRects(");
+    expect(mainJs).toContain("worldCopyXs(");
   });
 
   it("uses the C4H demo boilerplate shell", async () => {

@@ -1,6 +1,18 @@
-const TILE_SIZE = 256;
+import {
+  TILE_SIZE,
+  bboxScreenRects,
+  lonLatToScreen,
+  lonLatToWorld,
+  screenToLonLat,
+  worldCopyXs,
+  worldToLonLat,
+} from "./map-geometry.ts";
+
 const MAP_WIDTH = 720;
 const MAP_HEIGHT = 460;
+// マーカーの実体が左端 x からはみ出す分: 円の半径 7 + ラベル位置 +10 + 番号テキストの見込み幅。
+// これを bleed として渡すことで、コピー境界でマーカーが早すぎる消え方をしない。
+const MARKER_BLEED_PX = 48;
 
 const COUNTRIES = {
   auto: { label: "Auto", area: undefined, bounds: null },
@@ -56,42 +68,12 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function lonLatToWorld([lon, lat], zoom) {
-  const scale = TILE_SIZE * 2 ** zoom;
-  const latRad = Math.max(-85.05112878, Math.min(85.05112878, lat)) * Math.PI / 180;
-  return {
-    x: ((lon + 180) / 360) * scale,
-    y: (0.5 - Math.log((1 + Math.sin(latRad)) / (1 - Math.sin(latRad))) / (4 * Math.PI)) * scale,
-  };
-}
-
-function worldToLonLat(point, zoom) {
-  const scale = TILE_SIZE * 2 ** zoom;
-  const lon = (point.x / scale) * 360 - 180;
-  const n = Math.PI - (2 * Math.PI * point.y) / scale;
-  const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
-  return [lon, lat];
-}
-
 function centerWorld() {
   return lonLatToWorld(state.center, state.zoom);
 }
 
-function lonLatToScreen(point) {
-  const center = centerWorld();
-  const world = lonLatToWorld(point, state.zoom);
-  return [
-    world.x - center.x + MAP_WIDTH / 2,
-    world.y - center.y + MAP_HEIGHT / 2,
-  ];
-}
-
-function screenToLonLat({ x, y }) {
-  const center = centerWorld();
-  return worldToLonLat({
-    x: center.x + x - MAP_WIDTH / 2,
-    y: center.y + y - MAP_HEIGHT / 2,
-  }, state.zoom);
+function view() {
+  return { center: state.center, zoom: state.zoom, width: MAP_WIDTH, height: MAP_HEIGHT };
 }
 
 function createExtent(points) {
@@ -145,20 +127,15 @@ function renderTiles() {
 }
 
 function drawRect(ctx, bbox, style) {
-  const [left, top] = lonLatToScreen([bbox.west, bbox.north]);
-  const [right, bottom] = lonLatToScreen([bbox.east, bbox.south]);
-  const x = Math.min(left, right);
-  const y = Math.min(top, bottom);
-  const width = Math.max(1, Math.abs(right - left));
-  const height = Math.max(1, Math.abs(bottom - top));
-
   ctx.save();
   ctx.fillStyle = style.fill;
   ctx.strokeStyle = style.stroke;
   ctx.lineWidth = style.lineWidth ?? 2;
   if (style.dash) ctx.setLineDash(style.dash);
-  ctx.fillRect(x, y, width, height);
-  ctx.strokeRect(x, y, width, height);
+  for (const rect of bboxScreenRects(bbox, view())) {
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+  }
   ctx.restore();
 }
 
@@ -186,17 +163,19 @@ function renderMap() {
   }
 
   state.markers.forEach((point, index) => {
-    const [x, y] = lonLatToScreen(point);
-    ctx.fillStyle = "#e74c3c";
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#1a2744";
-    ctx.font = "bold 13px Helvetica Neue";
-    ctx.fillText(String(index + 1), x + 10, y - 10);
+    const [x, y] = lonLatToScreen(point, view());
+    for (const copyX of worldCopyXs(x, 0, view(), MARKER_BLEED_PX)) {
+      ctx.fillStyle = "#e74c3c";
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(copyX, y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#1a2744";
+      ctx.font = "bold 13px Helvetica Neue";
+      ctx.fillText(String(index + 1), copyX + 10, y - 10);
+    }
   });
 }
 
@@ -376,7 +355,7 @@ function bindMap() {
     const wasClick = !dragState.moved;
     dragState = null;
     if (wasClick) {
-      state.markers.push(screenToLonLat(eventToCanvasPoint(event)));
+      state.markers.push(screenToLonLat(eventToCanvasPoint(event), view()));
       await runLookup();
     }
   };
@@ -385,7 +364,7 @@ function bindMap() {
     if (!state.runtimeReady) return;
     event.preventDefault();
     const beforePoint = eventToCanvasPoint(event);
-    const beforeLonLat = screenToLonLat(beforePoint);
+    const beforeLonLat = screenToLonLat(beforePoint, view());
     const nextZoom = Math.max(2, Math.min(12, state.zoom + (event.deltaY < 0 ? 1 : -1)));
     if (nextZoom === state.zoom) return;
     state.zoom = nextZoom;
