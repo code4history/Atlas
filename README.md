@@ -100,4 +100,4 @@ The function accepts lon/lat degree input only.
 
 ## License
 
-Maplat Limited License 1.1
+MIT License. See [LICENSE](./LICENSE).

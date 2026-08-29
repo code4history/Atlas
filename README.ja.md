@@ -98,4 +98,4 @@ metre でない場合に返します（**単位換算はしません**）。thro
 
 ## ライセンス
 
-Maplat Limited License 1.1
+MIT License です。[LICENSE](./LICENSE) を参照してください。

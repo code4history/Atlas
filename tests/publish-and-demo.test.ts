@@ -133,4 +133,39 @@ describe("publish and demo packaging", () => {
     // Teiresias 側から相対パスで Atlas を assert する形は解決不能になるため。
     expect(deploy).toContain("- master");
   });
+
+  it("states the actual MIT license in both READMEs", async () => {
+    // m3-t2/K12: package.json の license と LICENSE は MIT だが、README ×2 は
+    // 旧 Maplat 系の制限的ライセンス名（設計 §4.4.4 が実測した表記）を表示していた。
+    // 公開すると README が実際より制限的なライセンスを主張する ∴ repo 内で閉じる検査で固定する
+    // （outer の走査だけに頼ると、分離後の公開リポジトリ単体では 1 本も走らない）。
+    //
+    // ⚠️ 禁止語をソースへ**逐語で置かない**（連結して組み立てる）。
+    // m3-t2/AC-6 は「3 repo 全域で当該語が 0 件」を走査で固定する ∴ 検査の実装元が自分でヒットすると、
+    // 走査は「検査が存在すること」を欠陥として数えてしまう。走査対象からファイルごと除外するより、
+    // 実装元だけを走査面から外すこの形の方が、同ファイルの他の行に対する走査を弱めない
+    // （nayuta-implementer「検査の除外を足すとき（H-9）」の「実装元は除外し、実装元の側で規律を強制する」）。
+    const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+      license?: string;
+    };
+    const license = await readFile(new URL("../LICENSE", import.meta.url), "utf8");
+    const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+    const readmeJa = await readFile(new URL("../README.ja.md", import.meta.url), "utf8");
+
+    expect(packageJson.license).toBe("MIT");
+    expect(license).toContain("MIT License");
+
+    const forbiddenLicenseNames = ["maplat " + "limited", "limited " + "license"];
+
+    for (const [name, text] of [
+      ["README.md", readme],
+      ["README.ja.md", readmeJa],
+    ] as const) {
+      expect(text, `${name}: MIT 表記`).toContain("MIT License");
+      expect(text, `${name}: LICENSE への参照`).toContain("[LICENSE](./LICENSE)");
+      for (const forbidden of forbiddenLicenseNames) {
+        expect(text.toLowerCase(), `${name}: 制限ライセンス名の残存`).not.toContain(forbidden);
+      }
+    }
+  });
 });
