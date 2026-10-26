@@ -1,7 +1,7 @@
 # Project Context
 
 ## Purpose
-Atlas provides candidate CRS lookup for Maplat V3.1. It is the catalog and filtering layer used before CRS/world-file fitting.
+Atlas provides candidate CRS lookup for Maplat. It is the catalog and filtering layer used before CRS/world-file fitting.
 
 ## Tech Stack
 - TypeScript (planned)

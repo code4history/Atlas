@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/code4history/Atlas/actions/workflows/test.yml/badge.svg)](https://github.com/code4history/Atlas/actions/workflows/test.yml)
 
-Candidate CRS lookup for Maplat V3.1, usable from Node.js and browser runtimes.
+Candidate CRS lookup for Maplat, usable from Node.js and browser runtimes.
 Atlas searches `proj.db` through `proj-wasm` and can optionally merge JSON-defined custom projections such as UTJCP historical zones.
 
 日本語のREADMEは[こちら](./README.ja.md)。

@@ -6,7 +6,7 @@
     "access": "public"
   },
   "type": "module",
-  "description": "Candidate CRS catalog lookup for Maplat V3.1.",
+  "description": "Candidate CRS catalog lookup for Maplat.",
   "module": "./dist/atlas.js",
   "types": "./dist/index.d.ts",
   "exports": {
