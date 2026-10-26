@@ -20,6 +20,7 @@ export type { CandidateCrsExtent } from "./crs-types.ts";
 export type {
   InitializeProjWasmRuntimeOptions,
   ListProjectedCrsFromProjWasmOptions,
+  ProjectedCrsExclusion,
   ProjectedCrsInfo,
   TransformLonLatToProjectedOptions,
 } from "./proj-wasm-crs.ts";

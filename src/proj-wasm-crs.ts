@@ -1,4 +1,5 @@
 import type { CandidateCrsExtent } from "./crs-types.ts";
+import { projWasmExclusions } from "./proj-wasm-exclusions.ts";
 
 export interface ProjectedCrsInfo {
   id: string;
@@ -16,6 +17,13 @@ export interface ProjectedCrsInfo {
   definitionType?: "projdb" | "custom" | "user";
 }
 
+/** A proj.db row that matched the search but was left out of the result, with the reason. */
+export interface ProjectedCrsExclusion {
+  id: string;
+  name: string;
+  reason: string;
+}
+
 export interface ListProjectedCrsFromProjWasmOptions {
   extent: CandidateCrsExtent;
   area?: string;
@@ -27,6 +35,11 @@ export interface ListProjectedCrsFromProjWasmOptions {
   /** @deprecated Use userProjection with a file://, https://, or data: URI. */
   userProjectionFile?: string;
   projWasmAssetBaseUrl?: string | URL;
+  /**
+   * Called once per search with the proj.db rows that matched the search but were left out
+   * because their PROJ string cannot be exported by the bundled proj-wasm runtime.
+   */
+  onExcluded?: (excluded: ProjectedCrsExclusion[]) => void;
 }
 
 export interface InitializeProjWasmRuntimeOptions {
@@ -70,6 +83,16 @@ interface CustomProjectionFile {
 }
 
 const PJ_TYPE_PROJECTED_CRS = 15;
+
+/**
+ * proj-wasm の実行時で書き出すと例外になる行（`scripts/generate-proj-wasm-exclusions.mjs` で実測）。
+ * PROJ（C++）の例外は wasm の外へ抜け、重なると実行時が壊れて以後の呼び出しも失敗する
+ * ∴ 例外になる書き出しは wasm に渡す前に避ける。
+ */
+const WKT2_UNAVAILABLE_IDS = new Set<string>(projWasmExclusions.wkt2Unavailable);
+const PROJ4_UNAVAILABLE_REASONS = new Map<string, string>(
+  projWasmExclusions.proj4Unavailable.map((entry) => [entry.id, entry.reason]),
+);
 
 /**
  * `transformLonLatArrayToProjected` の source 側 CRS（m2a-t1 設計 §4.2 step 3）。
@@ -213,12 +236,15 @@ async function expandProjectedCrsInfo(row: ProjDatabaseRow): Promise<ProjectedCr
     category: proj.PJ_CATEGORY_CRS,
   });
 
+  const id = `${row.authName}:${row.code}`;
   const [wkt2, proj4] = await Promise.all([
-    proj.projAsWkt({
-      pj,
-      type: proj.PJ_WKT2_2019,
-      options: null,
-    }),
+    WKT2_UNAVAILABLE_IDS.has(id)
+      ? null
+      : proj.projAsWkt({
+        pj,
+        type: proj.PJ_WKT2_2019,
+        options: null,
+      }),
     proj.projAsProjString({
       pj,
       type: proj.PJ_PROJ_5,
@@ -227,7 +253,7 @@ async function expandProjectedCrsInfo(row: ProjDatabaseRow): Promise<ProjectedCr
   ]);
 
   return {
-    id: `${row.authName}:${row.code}`,
+    id,
     authority: row.authName,
     code: row.code,
     name: row.name,
@@ -387,7 +413,17 @@ export async function listProjectedCrsFromProjWasm(
   const filtered = filterProjectedCrsRows(rows, options);
   const resultMap = new Map<string, ProjectedCrsInfo>();
 
-  const projDbResults = await Promise.all(filtered.map((row) => expandProjectedCrsInfo(row)));
+  const excluded: ProjectedCrsExclusion[] = [];
+  const expandable = filtered.filter((row) => {
+    const id = `${row.authName}:${row.code}`;
+    const reason = PROJ4_UNAVAILABLE_REASONS.get(id);
+    if (reason === undefined) return true;
+    excluded.push({ id, name: row.name, reason });
+    return false;
+  });
+  options.onExcluded?.(excluded);
+
+  const projDbResults = await Promise.all(expandable.map((row) => expandProjectedCrsInfo(row)));
   for (const row of projDbResults) {
     resultMap.set(row.id, row);
   }

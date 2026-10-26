@@ -38,6 +38,7 @@ const EXPECTED_TYPE_EXPORTS = [
   "CandidateSeedScope",
   "InitializeProjWasmRuntimeOptions",
   "ListProjectedCrsFromProjWasmOptions",
+  "ProjectedCrsExclusion",
   "ProjectedCrsInfo",
   "TransformLonLatToProjectedOptions",
 ] as const;
@@ -64,8 +65,9 @@ describe("public API alignment", () => {
       .sort();
     expect(typeExportNames).toEqual([...EXPECTED_TYPE_EXPORTS]);
 
+    // 上の 2 件に、検索から外した行を知らせる型 `ProjectedCrsExclusion` の 1 件を足す
     expect(EXPECTED_RUNTIME_EXPORTS.length + EXPECTED_TYPE_EXPORTS.length).toBe(
-      BASELINE_EXPORT_COUNT + 2,
+      BASELINE_EXPORT_COUNT + 3,
     );
 
     expect("CandidateCrsStore" in atlas).toBe(false);
