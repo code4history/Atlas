@@ -14,6 +14,12 @@ export interface ProjectedCrsInfo {
     source?: string[];
     definitionType?: "projdb" | "custom" | "user";
 }
+/** A proj.db row that matched the search but was left out of the result, with the reason. */
+export interface ProjectedCrsExclusion {
+    id: string;
+    name: string;
+    reason: string;
+}
 export interface ListProjectedCrsFromProjWasmOptions {
     extent: CandidateCrsExtent;
     area?: string;
@@ -25,6 +31,11 @@ export interface ListProjectedCrsFromProjWasmOptions {
     /** @deprecated Use userProjection with a file://, https://, or data: URI. */
     userProjectionFile?: string;
     projWasmAssetBaseUrl?: string | URL;
+    /**
+     * Called once per search with the proj.db rows that matched the search but were left out
+     * because their PROJ string cannot be exported by the bundled proj-wasm runtime.
+     */
+    onExcluded?: (excluded: ProjectedCrsExclusion[]) => void;
 }
 export interface InitializeProjWasmRuntimeOptions {
     projWasmAssetBaseUrl?: string | URL;
