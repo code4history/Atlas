@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/code4history/Atlas/actions/workflows/test.yml/badge.svg)](https://github.com/code4history/Atlas/actions/workflows/test.yml)
 
-Maplat V3.1 向けの candidate CRS lookup ライブラリです。Node.js とブラウザ runtime の両方から利用できます。
+Maplat 向けの candidate CRS lookup ライブラリです。Node.js とブラウザ runtime の両方から利用できます。
 `proj-wasm` 経由で `proj.db` を検索し、UTJCP のような JSON 定義の追加投影系も統合できます。
 
 English README is [here](./README.md).
