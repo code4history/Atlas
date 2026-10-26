@@ -109,6 +109,19 @@ let projWasmModulePromise: Promise<typeof import("proj-wasm")> | undefined;
 let builtInCustomProjectionPromise: Promise<CustomProjectionDefinition[]> | undefined;
 let projWasmAssetResolverInstalled = false;
 
+/**
+ * proj.db の行の一覧と、行ごとの展開結果（WKT2・PROJ 文字列）を 1 process の中で使い回す。
+ *
+ * proj-wasm 0.1.0-alpha8 では、PROJ object を `proj_destroy` で解放しても取り戻せない資源が
+ * 作成のたびに残り、約 22 万回で wasm のメモリ上限（2 GiB）に当たって以後の検索が
+ * `SQLite error [ out of memory ]` で落ちる。`area` なしの検索は 1 回で約 2,200 行を展開するので、
+ * 毎回作り直すと約 100 回の検索で落ちる。展開結果は proj.db と proj-wasm の版で決まる
+ * （同じ process の中では変わらない）ので、同じ行の PJ は 1 回しか作らない。
+ * 作成の回数は proj.db の投影 CRS の行数（8,820）で頭打ちになる。
+ */
+let crsInfoListPromise: Promise<ProjDatabaseRow[]> | undefined;
+const expandedProjectedCrsCache = new Map<string, Promise<ProjectedCrsInfo>>();
+
 const BUILTIN_CUSTOM_PROJECTIONS_URL = new URL("../data/crs/custom-projections.json", import.meta.url);
 const PROJ_WASM_RUNTIME_ASSETS = [
   "proj.db",
@@ -227,6 +240,34 @@ function padExtent(extent: CandidateCrsExtent, paddingDeg: number): CandidateCrs
     east: Math.min(180, extent.east + paddingDeg),
     north: Math.min(90, extent.north + paddingDeg),
   };
+}
+
+function copyProjectedCrsInfo(info: ProjectedCrsInfo): ProjectedCrsInfo {
+  return { ...info, bbox: { ...info.bbox } };
+}
+
+/** 行の展開結果を使い回す。失敗した行は覚えず、次の呼び出しで作り直す。 */
+async function expandProjectedCrsInfoOnce(row: ProjDatabaseRow): Promise<ProjectedCrsInfo> {
+  const id = `${row.authName}:${row.code}`;
+  let pending = expandedProjectedCrsCache.get(id);
+  if (pending === undefined) {
+    pending = expandProjectedCrsInfo(row);
+    expandedProjectedCrsCache.set(id, pending);
+    pending.catch(() => {
+      if (expandedProjectedCrsCache.get(id) === pending) expandedProjectedCrsCache.delete(id);
+    });
+  }
+  return copyProjectedCrsInfo(await pending);
+}
+
+async function listProjDatabaseRows(proj: typeof import("proj-wasm")): Promise<ProjDatabaseRow[]> {
+  if (!crsInfoListPromise) {
+    crsInfoListPromise = proj.projGetCrsInfoListFromDatabase({}) as Promise<ProjDatabaseRow[]>;
+    crsInfoListPromise.catch(() => {
+      crsInfoListPromise = undefined;
+    });
+  }
+  return crsInfoListPromise;
 }
 
 async function expandProjectedCrsInfo(row: ProjDatabaseRow): Promise<ProjectedCrsInfo> {
@@ -408,7 +449,7 @@ export async function listProjectedCrsFromProjWasm(
   await ensureProjInitialized(options);
   const proj = await loadProjWasm();
 
-  const rows = (await proj.projGetCrsInfoListFromDatabase({})) as ProjDatabaseRow[];
+  const rows = await listProjDatabaseRows(proj);
   const filtered = filterProjectedCrsRows(rows, options);
   const resultMap = new Map<string, ProjectedCrsInfo>();
 
@@ -422,7 +463,7 @@ export async function listProjectedCrsFromProjWasm(
   });
   options.onExcluded?.(excluded);
 
-  const projDbResults = await Promise.all(expandable.map((row) => expandProjectedCrsInfo(row)));
+  const projDbResults = await Promise.all(expandable.map((row) => expandProjectedCrsInfoOnce(row)));
   for (const row of projDbResults) {
     resultMap.set(row.id, row);
   }
@@ -473,6 +514,21 @@ interface ProjAxisInfo {
  *   wasm ヒープ故障になる（設計 §3.3 の実測）∴ 生成前に弾く必要がある。
  * - native 単位が metre でない候補は単位換算せず変換不能へ落とす（m1-t1 からの申し送り）。
  */
+/**
+ * target の検証結果は定義の文字列で決まるので、文字列ごとに 1 回だけ PJ を作って確かめる
+ * （解放しても戻らない資源を、同じ target への変換のたびに使わないため）。
+ */
+const eastNorthMetreCrsCache = new Map<string, Promise<boolean>>();
+
+function isEastNorthMetreCrsOnce(proj: typeof import("proj-wasm"), definition: string): Promise<boolean> {
+  let pending = eastNorthMetreCrsCache.get(definition);
+  if (pending === undefined) {
+    pending = isEastNorthMetreCrs(proj, definition);
+    eastNorthMetreCrsCache.set(definition, pending);
+  }
+  return pending;
+}
+
 async function isEastNorthMetreCrs(
   proj: typeof import("proj-wasm"),
   definition: string,
@@ -527,7 +583,7 @@ export async function transformLonLatArrayToProjected(
   const proj = await loadProjWasm();
 
   // step 2: target 検証（DEV-1。CRS であること・軸順 east/north・両軸 metre）
-  if (!(await isEastNorthMetreCrs(proj, target.proj4))) return null;
+  if (!(await isEastNorthMetreCrsOnce(proj, target.proj4))) return null;
 
   // step 3: pipeline 生成（proj 文字列 → proj 文字列。軸順は生成方法で決まる。設計 §3.2）
   // step 4: 一括変換（座標配列は JS 側の Float64Array で、wasm 側の解放は要らない）
