@@ -96,8 +96,34 @@ const result = await estimateCrs(gcps, rows, {
 });
 ```
 
-同梱の proj-wasm で PROJ 文字列にできない行は、検索結果から外します。理由つきで受け取るには
-`listProjectedCrsFromProjWasm` に `onExcluded` を渡します。
+### 同梱の proj-wasm で書き出せない行
+
+proj.db の行の中には、同梱の proj-wasm で書き出すと例外になるものがあります。Atlas は実行時を
+壊さないよう、その書き出しを避けます（一覧は proj-wasm の版ごとに実測しています）。
+
+- PROJ 文字列にできない行（30 行。例: `EPSG:32600`・`ESRI:54051`）は検索結果から外します。
+  `onExcluded` を渡すと、検索ごとに 1 回 `ProjectedCrsExclusion[]`（`{ id, name, reason }`）で
+  受け取れます。
+- WKT2 にできない行（992 行。`IGNF` の全行と `IAU_2015` の一部）は `wkt2: null` で結果に残します。
+  そのため `wkt2` は custom projection だけでなく proj.db の行でも `null` になりえます。
+
+```ts
+const rows = await listProjectedCrsFromProjWasm({
+  extent,
+  onExcluded: (excluded) => console.log(excluded.map(({ id, reason }) => `${id}: ${reason}`)),
+});
+```
+
+1 つの process の中では、proj.db の一覧と行ごとの WKT2・PROJ 文字列を 1 回だけ作り、以後の検索で
+使い回します。
+
+### proj-wasm 0.1.0-alpha8 の既知の上限
+
+proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は返さず、wasm のメモリは 2 GiB が
+上限です。検索は PROJ object を使い回すので影響を受けません（1 つの process で 4,000 回の検索を実測）。
+`transformLonLatArrayToProjected`（と `createCandidateTransformer` が作る関数）は呼び出しごとに
+PROJ object を 1 つ作るので、1 つの process で約 20 万回（実測 199,698 回）呼ぶとメモリが尽き、
+以後は `null` を返します。その前に process を作り直して（ページを開き直して）ください。
 
 ## 開発
 

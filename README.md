@@ -99,8 +99,36 @@ const result = await estimateCrs(gcps, rows, {
 });
 ```
 
-Rows whose PROJ string cannot be produced by the bundled proj-wasm are left out of the search
-result. Pass `onExcluded` to `listProjectedCrsFromProjWasm` to receive them with the reason.
+### Rows the bundled proj-wasm cannot export
+
+Some proj.db rows throw inside the bundled proj-wasm when they are exported. Atlas avoids those
+exports instead of letting the runtime break (the list is measured per proj-wasm version):
+
+- Rows whose PROJ string cannot be produced (30 rows, for example `EPSG:32600` and `ESRI:54051`)
+  are left out of the search result. Pass `onExcluded` to receive them once per search as
+  `ProjectedCrsExclusion[]` (`{ id, name, reason }`).
+- Rows whose WKT2 cannot be produced (992 rows: all `IGNF` rows and part of `IAU_2015`) stay in the
+  result with `wkt2: null`. `wkt2` can therefore be `null` for proj.db rows as well as for custom
+  projections.
+
+```ts
+const rows = await listProjectedCrsFromProjWasm({
+  extent,
+  onExcluded: (excluded) => console.log(excluded.map(({ id, reason }) => `${id}: ${reason}`)),
+});
+```
+
+Within one process, the proj.db listing and each row's WKT2 and PROJ string are built once and reused
+by later searches.
+
+### Known limit of proj-wasm 0.1.0-alpha8
+
+proj-wasm 0.1.0-alpha8 does not get back all memory when a PROJ object is released, and the wasm
+memory is capped at 2 GiB. Searches reuse their PROJ objects, so they are not affected (4,000
+searches in one process were measured). `transformLonLatArrayToProjected` (and the transformer from
+`createCandidateTransformer`) still builds one PROJ object per call: about 200,000 calls in one
+process (199,698 measured) fill the memory, after which calls return `null`. Start a new process
+(or reload the page) before that.
 
 ## Development
 

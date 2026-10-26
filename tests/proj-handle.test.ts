@@ -46,6 +46,24 @@ describe("withPj", () => {
   });
 });
 
+describe("withPj when releasing fails", () => {
+  it("keeps the result of use when projDestroy throws", async () => {
+    const proj = { projDestroy: vi.fn(async () => { throw new Error("destroy failed"); }) };
+
+    await expect(withPj(proj, async () => ({ handle: 3 }), async () => "kept")).resolves.toBe("kept");
+    expect(proj.projDestroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows the error of use, not the error of projDestroy", async () => {
+    const proj = { projDestroy: vi.fn(async () => { throw new Error("destroy failed"); }) };
+
+    await expect(withPj(proj, async () => ({ handle: 4 }), async () => {
+      throw new Error("use failed");
+    })).rejects.toThrow("use failed");
+    expect(proj.projDestroy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("PJ objects in src are always released", () => {
   it("creates PJ objects only inside withPj", async () => {
     const creators = ["projCreate", "projCreateFromDatabase", "projCreateCrsToCrs", "projCrsGetCoordinateSystem"];

@@ -6,7 +6,8 @@ export interface PjDestroyer {
 /**
  * Creates a PROJ object, hands it to `use`, and always releases it with `proj_destroy`
  * afterwards, whether `use` returns or throws. Nothing is released when `create` throws
- * or returns no object.
+ * or returns no object. A failure to release never replaces the outcome of `use`: its
+ * result is returned, or its error is rethrown.
  */
 export async function withPj<T>(
   proj: PjDestroyer,
@@ -18,7 +19,11 @@ export async function withPj<T>(
     return await use(pj);
   } finally {
     if (pj !== undefined && pj !== null) {
-      await proj.projDestroy({ pj });
+      try {
+        await proj.projDestroy({ pj });
+      } catch {
+        // The object is lost either way; keep the outcome of `use`.
+      }
     }
   }
 }
