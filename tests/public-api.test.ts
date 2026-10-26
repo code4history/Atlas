@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { shouldExternalize } from "../vite.config.ts";
 
@@ -15,6 +15,7 @@ import { shouldExternalize } from "../vite.config.ts";
  */
 const EXPECTED_RUNTIME_EXPORTS = [
   "bboxToPolygonWkt",
+  "createCandidateTransformer",
   "extractAuthorityIdFromWkt",
   "extractWktName",
   "inferApproximateBbox",
@@ -30,6 +31,8 @@ const EXPECTED_RUNTIME_EXPORTS = [
 ] as const;
 
 const EXPECTED_TYPE_EXPORTS = [
+  "AtlasCandidateTransformer",
+  "AtlasGeoBasisLike",
   "CandidateAuthorityId",
   "CandidateBbox",
   "CandidateCrsExtent",
@@ -65,9 +68,10 @@ describe("public API alignment", () => {
       .sort();
     expect(typeExportNames).toEqual([...EXPECTED_TYPE_EXPORTS]);
 
-    // 上の 2 件に、検索から外した行を知らせる型 `ProjectedCrsExclusion` の 1 件を足す
+    // 上の 2 件に、検索から外した行を知らせる型 `ProjectedCrsExclusion` の 1 件と、
+    // Teiresias へつなぐ adapter（関数 `createCandidateTransformer` と型 2 件）の 3 件を足す
     expect(EXPECTED_RUNTIME_EXPORTS.length + EXPECTED_TYPE_EXPORTS.length).toBe(
-      BASELINE_EXPORT_COUNT + 3,
+      BASELINE_EXPORT_COUNT + 6,
     );
 
     expect("CandidateCrsStore" in atlas).toBe(false);
@@ -89,6 +93,25 @@ describe("public API alignment", () => {
     expect(packageJson.scripts?.["crs:build-system-db"]).toBeUndefined();
     expect(packageJson.files).not.toContain("data");
     expect(packageJson.files).toContain("data/crs/custom-projections.json");
+  });
+
+  it("does not depend on Teiresias (the adapter matches its transformer type by shape only)", async () => {
+    const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as Record<string, unknown>;
+    for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+      const deps = (packageJson[field] ?? {}) as Record<string, string>;
+      expect(Object.keys(deps)).not.toContain("@c4h/teiresias");
+    }
+
+    const srcFiles = (await readdir(new URL("../src/", import.meta.url))).filter((name) => /\.(ts|js|mjs)$/.test(name));
+    const teiresiasImports: string[] = [];
+    for (const file of srcFiles) {
+      const source = await readFile(new URL(`../src/${file}`, import.meta.url), "utf8");
+      if (/from\s+["'][^"']*teiresias[^"']*["']|import\(\s*["'][^"']*teiresias/i.test(source)) teiresiasImports.push(file);
+    }
+    expect(teiresiasImports).toEqual([]);
+
+    const atlas = await import("../src/index.ts");
+    expect(typeof atlas.createCandidateTransformer).toBe("function");
   });
 
   it("externalizes proj-wasm in the package build", () => {

@@ -75,6 +75,33 @@ definition is not a CRS, whose axes are not east/north, or whose units are not m
 (units are never converted). Exceptions are reserved for implementation bugs.
 The function accepts lon/lat degree input only.
 
+### Using Atlas with Teiresias
+
+`createCandidateTransformer(rows)` turns candidate rows into a transformer with the same shape as
+the `CandidateTransformer` of [`@c4h/teiresias`](https://github.com/code4history/Teiresias), so the
+candidates found by Atlas can be ranked by `estimateCrs`. Atlas does not depend on Teiresias; the
+types match by shape. The transformer returns `null` for a geo basis other than
+`{ kind: "lonlat_deg", axisOrder: "lon-lat" }` and for an id that is not among the rows; otherwise it
+returns what `transformLonLatArrayToProjected` returns. The rows are copied when the transformer is
+created.
+
+```ts
+import { createCandidateTransformer, listProjectedCrsFromProjWasm } from "@c4h/atlas";
+import { estimateCrs } from "@c4h/teiresias";
+
+const rows = await listProjectedCrsFromProjWasm({
+  extent: { west: 135.6, south: 34.9, east: 135.9, north: 35.1 },
+  area: "Japan",
+});
+
+const result = await estimateCrs(gcps, rows, {
+  transformer: createCandidateTransformer(rows),
+});
+```
+
+Rows whose PROJ string cannot be produced by the bundled proj-wasm are left out of the search
+result. Pass `onExcluded` to `listProjectedCrsFromProjWasm` to receive them with the reason.
+
 ## Development
 
 - `pnpm run dev`: start the local demo site

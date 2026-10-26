@@ -73,6 +73,32 @@ console.log(projected); // [[easting, northing], [easting, northing]] または 
 metre でない場合に返します（**単位換算はしません**）。throw は実装 bug のときだけです。
 入力は lon/lat の度数のみを受け付けます。
 
+### Teiresias と組み合わせる
+
+`createCandidateTransformer(rows)` は候補の行から、[`@c4h/teiresias`](https://github.com/code4history/Teiresias)
+の `CandidateTransformer` と同じ形の関数を作ります。Atlas で引いた候補を、そのまま `estimateCrs`
+で順位づけできます。Atlas は Teiresias に依存しません（型は形で合わせています）。
+`geoBasis` が `{ kind: "lonlat_deg", axisOrder: "lon-lat" }` でないとき、および行に無い id のときは
+`null` を返し、それ以外は `transformLonLatArrayToProjected` の結果を返します。行は関数を作った
+時点で写し取ります。
+
+```ts
+import { createCandidateTransformer, listProjectedCrsFromProjWasm } from "@c4h/atlas";
+import { estimateCrs } from "@c4h/teiresias";
+
+const rows = await listProjectedCrsFromProjWasm({
+  extent: { west: 135.6, south: 34.9, east: 135.9, north: 35.1 },
+  area: "Japan",
+});
+
+const result = await estimateCrs(gcps, rows, {
+  transformer: createCandidateTransformer(rows),
+});
+```
+
+同梱の proj-wasm で PROJ 文字列にできない行は、検索結果から外します。理由つきで受け取るには
+`listProjectedCrsFromProjWasm` に `onExcluded` を渡します。
+
 ## 開発
 
 - `pnpm run dev`: ローカル demo site を起動
