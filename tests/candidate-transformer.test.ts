@@ -30,7 +30,14 @@ function catalog(): Promise<ProjectedCrsInfo[]> {
   return catalogPromise;
 }
 
-describe("createCandidateTransformer", () => {
+/**
+ * Tests here go through the real proj-wasm engine; the first one in a file also pays for its start-up.
+ * Timeout = twice the longest test measured while Atlas, Daedalus and Teiresias ran their tests at
+ * the same time (7984 ms, rounded up to whole seconds).
+ */
+const PROJ_WASM_TEST_TIMEOUT_MS = 16_000;
+
+describe("createCandidateTransformer", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   it("returns exactly what transformLonLatArrayToProjected returns for a catalog row", async () => {
     const rows = await catalog();
     const row = rows.find((candidate) => candidate.id === "EPSG:6674");
