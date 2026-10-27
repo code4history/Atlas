@@ -27,14 +27,15 @@ describe("custom projection rows", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () =>
   it("are not changed by a caller that changes an earlier result", async () => {
     const first = await findZoneB();
     const originalBbox = { ...first.bbox };
-    const originalSource = [...first.source];
+    expect(first.source).toBeDefined();
+    const originalSource = [...first.source!];
 
     // Move the bbox away from the search extent and change the source list.
     first.bbox.west = 0;
     first.bbox.east = 1;
     first.bbox.south = 0;
     first.bbox.north = 1;
-    first.source.push("changed by the caller");
+    first.source!.push("changed by the caller");
 
     const second = await findZoneB();
     expect(second.bbox).toEqual(originalBbox);
