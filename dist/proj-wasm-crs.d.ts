@@ -33,6 +33,10 @@ export interface ListProjectedCrsFromProjWasmOptions {
      * exceptions this raises pile up until the runtime stops answering. The test uses the celestial
      * body proj.db gives for the CRS (`ellipsoid.celestial_body_auth_name/code` -> `celestial_body.name`,
      * reported as `celestialBodyName`), so no PROJ object is created for the rows left out.
+     *
+     * When you keep them, do not pass such rows in bulk to `transformLonLatArrayToProjected`, nor
+     * through `createCandidateTransformer` to the `estimateCrs` of Teiresias (`estimateCrs` transforms
+     * every candidate it is given).
      */
     includeOtherCelestialBodies?: boolean;
     onshoreOnly?: boolean;

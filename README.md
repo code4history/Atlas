@@ -117,7 +117,9 @@ No PROJ object is created for the rows left out.
   `Not on the Earth (celestial body: <name>)` (for a Kyoto extent without `area`: 2,046 rows, and
   the result goes from 2,213 to 167 rows).
 - Pass `includeOtherCelestialBodies: true` to keep them (for example to list them). Do not pass such
-  rows to `transformLonLatArrayToProjected` in bulk.
+  rows in bulk to `transformLonLatArrayToProjected`, nor through `createCandidateTransformer` to the
+  `estimateCrs` of Teiresias: `estimateCrs` transforms every candidate it is given, so the runtime can
+  stop answering, and a candidate whose transformation fails makes the whole estimate fail.
 
 ### Rows the bundled proj-wasm cannot export
 
