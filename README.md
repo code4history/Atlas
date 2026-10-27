@@ -234,6 +234,14 @@ in [CHANGELOG.md](./CHANGELOG.md).
 - Demo app: `demo/crs-candidate-lookup.html`
 - GitHub Pages target: `https://code4history.github.io/Atlas/`
 
+The demo page has three preset contrasts. Each contrast has an A and a B button:
+
+- `place`: the same filters over Kyoto (A) and over Tokyo (B), so the candidate plane rectangular systems change (VI on one side, VIII and IX on the other).
+- `historical-grid`: the Kyoto extent with the historical grid projections off (A) and on (B). B adds `UTJCP:ZONE-B` and exactly one row.
+- `area-filter`: the Kyoto extent with the Japan area filter on (A) and off (B). Without the filter, CRSs from outside Japan join the list.
+
+Pressing a preset puts markers on the four corners of its extent, fits the map to it, runs one lookup, and writes a one-line description of what should be visible. The existing toggles, area select and map controls keep working afterwards.
+
 ## License
 
 MIT License. See [LICENSE](./LICENSE).
