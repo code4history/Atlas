@@ -78,14 +78,53 @@ console.log(projected); // [[easting, northing], [easting, northing]] または 
 メモリが尽きた場合を含む）は throw するので、変換できない target と取り違えることはありません。
 入力は lon/lat の度数のみを受け付けます。
 
+### 単位
+
+座標は単位と組にして初めて意味を持ちます。`transformLonLatToCandidate` は同じ lon/lat（度）の
+点列を変換し、点列とその単位を組にして `{ points, unit }` で返します。`unit` は `LinearUnit`
+（`{ name, metresPerUnit }`。1 単位が何 metre か）です。
+
+- CRS のとき: 単位は PROJ の軸情報から取ります。metre の CRS なら
+  `{ name: "metre", metresPerUnit: 1 }`、フィートの CRS ならその名前と係数（たとえば `EPSG:2227`
+  なら `{ name: "US survey foot", metresPerUnit: 1200 / 3937 }`）です。軸が east / north の 2 次元で、
+  両軸の単位が同じ線形単位の CRS だけを変換し、それ以外の target は `null` です。
+- custom / user の定義の pipeline（同梱の UTJCP 歴史的市区町村の格子など）のとき: 定義は
+  「格子 → lon/lat（度）」の向きなので、点列は行の格子の単位（定義の `unit`）で返ります。同梱の
+  3 つの zone は `{ name: "yard (Japan City Plans)", metresPerUnit: 0.9143985307444408 }` を
+  持っています。`unit` の無い pipeline の行は変換できず `null` になるので、pipeline を持つ user の
+  定義ファイルには行ごとに `unit` を書いてください。
+- `transformLonLatArrayToProjected` の契約は変わりません。同じ変換を使い、単位が metre のときだけ
+  点列を返し、それ以外は `null` を返します。
+- Atlas は単位換算をしません。点列は候補の単位のままで、換算や書き戻しは呼ぶ側の仕事です
+  （この package の transformer を使うときは Teiresias が行います）。
+
+```ts
+import { listProjectedCrsFromProjWasm, transformLonLatToCandidate } from "@c4h/atlas";
+
+const rows = await listProjectedCrsFromProjWasm({
+  extent: { west: 135.6, south: 34.9, east: 135.9, north: 35.1 },
+  area: "Japan",
+  includeCustomProjections: true,
+  onshoreOnly: false,
+});
+const zoneB = rows.find((row) => row.id === "UTJCP:ZONE-B");
+
+const converted = await transformLonLatToCandidate(zoneB!, [[135.75, 35.0]]);
+
+console.log(converted?.unit); // { name: "yard (Japan City Plans)", metresPerUnit: 0.9143985307444408 }
+console.log(converted?.points); // その単位の [[x, y]]。変換できなければ null
+```
+
 ### Teiresias と組み合わせる
 
 `createCandidateTransformer(rows)` は候補の行から、[`@c4h/teiresias`](https://github.com/code4history/Teiresias)
 の `CandidateTransformer` と同じ形の関数を作ります。Atlas で引いた候補を、そのまま `estimateCrs`
 で順位づけできます。Atlas は Teiresias に依存しません（型は形で合わせています）。
 `geoBasis` が `{ kind: "lonlat_deg", axisOrder: "lon-lat" }` でないとき、および行に無い id のときは
-`null` を返し、それ以外は `transformLonLatArrayToProjected` の結果を返します（throw もそのまま
-伝えます）。行は関数を作った時点で写し取ります。
+`null` を返します。それ以外は、metre の候補なら plain な点列（`transformLonLatArrayToProjected` と
+同じ点列）、別の単位の候補なら `{ points, unit }` を返します（throw もそのまま伝えます）。
+Teiresias はこの結果の単位を使うので、歴史的市区町村の格子の点列も yard のまま順位づけと
+書き出しができます。行は関数を作った時点で `unit` ごと写し取ります。
 
 ```ts
 import { createCandidateTransformer, listProjectedCrsFromProjWasm } from "@c4h/atlas";
@@ -163,7 +202,8 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 |---|---|
 | `listProjectedCrsFromProjWasm(options)` | 適用範囲が `options.extent` を含む投影 CRS の候補を列挙します（基本的な使い方を参照）。戻り値は `ProjectedCrsInfo[]` です。 |
 | `initializeProjWasmRuntime(options?)` | 同梱の proj-wasm を最初の検索より前に読み込みます。省略してよく、ほかの呼び出しが必要なときに読み込みます。 |
-| `transformLonLatArrayToProjected(target, points, options?)` | 経緯度（度・lon-lat 順）を 1 つの候補の `[easting, northing]` へ変換します。 |
+| `transformLonLatArrayToProjected(target, points, options?)` | 経緯度（度・lon-lat 順）を 1 つの候補の `[easting, northing]` へ変換します（metre のときだけ点列を返します）。 |
+| `transformLonLatToCandidate(target, points, options?)` | 経緯度（度・lon-lat 順）を 1 つの候補の座標へ変換し、線形単位といっしょに `{ points, unit }` で返します（単位を参照）。 |
 | `createCandidateTransformer(rows, options?)` | Teiresias の `estimateCrs` に渡す `AtlasCandidateTransformer` を作ります（Teiresias と組み合わせるを参照）。 |
 | `isProjectedPrjPath(pathname)` | 同梱の日本の WKT 集の `.prj` のパスが投影 CRS かどうかを返します。 |
 | `inferDatumFamily(pathname)` | そのパスから測地系の系統（`CandidateDatumFamily`）を読みます。 |
@@ -180,12 +220,13 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 
 | 名前 | 表すもの |
 |---|---|
-| `ProjectedCrsInfo` | 候補 1 件。`id`・`authority`・`code`・`name`・`areaName`・`deprecated`・`bbox`・`wkt2`・`proj4` と任意の詳細。 |
+| `ProjectedCrsInfo` | 候補 1 件。`id`・`authority`・`code`・`name`・`areaName`・`deprecated`・`bbox`・`wkt2`・`proj4` と任意の詳細。custom / user の pipeline の行は格子の `unit` も持ちます。 |
+| `LinearUnit` | 座標の線形単位 `{ name, metresPerUnit }`（1 単位が何 metre か）。 |
 | `ProjectedCrsExclusion` | 検索から外した行と理由（`onExcluded` に渡ります）。 |
 | `ListProjectedCrsFromProjWasmOptions` | `listProjectedCrsFromProjWasm` の option。 |
 | `InitializeProjWasmRuntimeOptions` | `initializeProjWasmRuntime` の option（`projWasmAssetBaseUrl`）。 |
-| `TransformLonLatToProjectedOptions` | `transformLonLatArrayToProjected` と `createCandidateTransformer` の option。 |
-| `AtlasCandidateTransformer` | `createCandidateTransformer` が返す変換関数。 |
+| `TransformLonLatToProjectedOptions` | `transformLonLatArrayToProjected`・`transformLonLatToCandidate`・`createCandidateTransformer` の option。 |
+| `AtlasCandidateTransformer` | `createCandidateTransformer` が返す変換関数。metre の候補なら plain な点列、別の単位の候補なら `{ points, unit }`、変換できなければ `null` を返します。 |
 | `AtlasGeoBasisLike` | 変換関数が受け取る座標の基準（Teiresias の `GeoBasis` と互換）。 |
 | `CandidateCrsExtent` | 経緯度の範囲 `{ west, south, east, north }`。 |
 | `CandidateBbox` | 経緯度の外接矩形 `{ west, south, east, north }`。 |

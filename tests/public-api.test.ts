@@ -9,6 +9,8 @@ import { shouldExternalize } from "../vite.config.ts";
  * （m2a-t1 設計 K2 / §4.4）。m2a-t1 以前の baseline は**関数 12・型 9 の計 21 件**であり、
  * 本タスクの増分は `transformLonLatArrayToProjected`（関数）と
  * `TransformLonLatToProjectedOptions`（型）の 2 件だけである。
+ * その後に足した `transformLonLatToCandidate`（関数）と `LinearUnit`（型）の 2 件も、
+ * 同じ数え方で固定する。
  *
  * 型 export は runtime に現れない ∴ 関数は import した module の key で、型は
  * `src/index.ts` のソーステキストで固定する（両方を測らないと増分件数が数えられない）。
@@ -28,6 +30,7 @@ const EXPECTED_RUNTIME_EXPORTS = [
   "isScopeIncluded",
   "listProjectedCrsFromProjWasm",
   "transformLonLatArrayToProjected",
+  "transformLonLatToCandidate",
 ] as const;
 
 const EXPECTED_TYPE_EXPORTS = [
@@ -40,6 +43,7 @@ const EXPECTED_TYPE_EXPORTS = [
   "CandidateKind",
   "CandidateSeedScope",
   "InitializeProjWasmRuntimeOptions",
+  "LinearUnit",
   "ListProjectedCrsFromProjWasmOptions",
   "ProjectedCrsExclusion",
   "ProjectedCrsInfo",
@@ -69,9 +73,10 @@ describe("public API alignment", () => {
     expect(typeExportNames).toEqual([...EXPECTED_TYPE_EXPORTS]);
 
     // 上の 2 件に、検索から外した行を知らせる型 `ProjectedCrsExclusion` の 1 件と、
-    // Teiresias へつなぐ adapter（関数 `createCandidateTransformer` と型 2 件）の 3 件を足す
+    // Teiresias へつなぐ adapter（関数 `createCandidateTransformer` と型 2 件）の 3 件を足す。
+    // さらに、単位つきの変換（関数 `transformLonLatToCandidate` と型 `LinearUnit`）の 2 件を足す。
     expect(EXPECTED_RUNTIME_EXPORTS.length + EXPECTED_TYPE_EXPORTS.length).toBe(
-      BASELINE_EXPORT_COUNT + 6,
+      BASELINE_EXPORT_COUNT + 8,
     );
 
     expect("CandidateCrsStore" in atlas).toBe(false);

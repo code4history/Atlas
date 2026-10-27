@@ -1,4 +1,9 @@
 import { CandidateCrsExtent } from "./crs-types";
+/** 座標の線形単位。`metresPerUnit` は 1 単位が何 metre か。 */
+export interface LinearUnit {
+    name: string;
+    metresPerUnit: number;
+}
 export interface ProjectedCrsInfo {
     id: string;
     authority: string;
@@ -13,6 +18,11 @@ export interface ProjectedCrsInfo {
     isApproximate?: boolean;
     source?: string[];
     definitionType?: "projdb" | "custom" | "user";
+    /**
+     * 格子の単位（定義ファイルの `unit`）。custom / user の pipeline の行にだけ付き、
+     * proj.db の行には付かない（proj.db の行の単位は PROJ の軸情報から取る）。
+     */
+    unit?: LinearUnit;
 }
 /** A proj.db row that matched the search but was left out of the result, with the reason. */
 export interface ProjectedCrsExclusion {
@@ -90,12 +100,38 @@ export interface CustomProjectionDefinition {
     wkt2?: string | null;
     isApproximate?: boolean;
     source?: string[];
+    /** 格子の単位。pipeline の行には必須（無いと変換できない）。 */
+    unit?: LinearUnit;
 }
 export declare function filterProjectedCrsRows(rows: ProjDatabaseRow[], options: ListProjectedCrsFromProjWasmOptions): ProjDatabaseRow[];
 export declare function initializeProjWasmRuntime(options?: InitializeProjWasmRuntimeOptions): Promise<void>;
 export declare function listProjectedCrsFromProjWasm(options: ListProjectedCrsFromProjWasmOptions): Promise<ProjectedCrsInfo[]>;
 /**
+ * lon/lat（度・lon-lat 順）の点列を、候補の座標へ変換し、単位を添えて返す。
+ *
+ * - CRS: 軸が east / north の 2 次元で、両軸の単位が同じ線形単位（換算係数が正の有限値・単位名が
+ *   同じ）のときだけ変換する。単位は PROJ の軸情報から取る（metre なら
+ *   `{ name: "metre", metresPerUnit: 1 }`）。
+ * - CRS でない pipeline（custom / user の行の「格子 → lon/lat（度）」の向きの定義）: 行の `unit` を
+ *   添えて、pipeline を逆向き（`PJ_INV`）に流す。行に `unit` が無ければ `null`（業務的に変換不能）。
+ * - 空入力・非有限の入力・非有限の出力・上の条件に合わない target は `null`（部分成功はしない）。
+ *   実装側の理由で変換できないとき（PJ を作れない・proj-wasm の呼び出しが throw する。wasm の
+ *   メモリが尽きた場合を含む）は `null` にせず throw する。
+ * - 出力は入力と同数・同順で `[x, y]` 順（CRS なら easting / northing、pipeline なら格子の座標）。
+ * - 返す `unit` は写しである。書き換えても次の呼び出しの結果は変わらない。
+ *
+ * 本 export は **`lonlat_deg` / lon-lat 順の入力専用**である。`planar_xy` 入力の
+ * 実 engine 経路は持たない。
+ */
+export declare function transformLonLatToCandidate(target: Pick<ProjectedCrsInfo, "id" | "proj4"> & Partial<Pick<ProjectedCrsInfo, "unit">>, points: ReadonlyArray<readonly [number, number]>, options?: TransformLonLatToProjectedOptions): Promise<{
+    points: Array<[number, number]>;
+    unit: LinearUnit;
+} | null>;
+/**
  * lon/lat（度・lon-lat 順）の点列を、target CRS の投影座標 `[easting, northing]` へ一括変換する。
+ *
+ * 変換は `transformLonLatToCandidate` が行う。本 export はその結果のうち、単位が metre
+ * （`name` が `metre` で `metresPerUnit` が 1）のときだけ点列を返し、それ以外は `null` を返す。
  *
  * 契約:
  * - (3) 返却は常に `[easting, northing]` 順である（proj 文字列 pipeline により機構で保証する）。
@@ -116,7 +152,12 @@ export type AtlasGeoBasisLike = {
     axisOrder?: string;
 };
 /** A transformer with the same shape as Teiresias' `CandidateTransformer`. */
-export type AtlasCandidateTransformer = (id: string, points: ReadonlyArray<readonly [number, number]>, geoBasis: AtlasGeoBasisLike) => Promise<Array<[number, number]> | null>;
+export type AtlasCandidateTransformer = (id: string, points: ReadonlyArray<readonly [number, number]>, geoBasis: AtlasGeoBasisLike) => Promise<Array<[number, number]> | {
+    points: Array<[number, number]>;
+    unit: LinearUnit;
+} | null>;
+/** The part of a candidate row that `createCandidateTransformer` keeps. */
+type CandidateTransformerRow = Pick<ProjectedCrsInfo, "id" | "proj4"> & Partial<Pick<ProjectedCrsInfo, "unit">>;
 /**
  * Builds a candidate transformer from candidate rows (for example the result of
  * `listProjectedCrsFromProjWasm`), so the rows can be passed to Teiresias' `estimateCrs`
@@ -125,8 +166,13 @@ export type AtlasCandidateTransformer = (id: string, points: ReadonlyArray<reado
  * - Points must be lon/lat degrees in lon-lat order (`{ kind: "lonlat_deg", axisOrder: "lon-lat" }`);
  *   any other geo basis gives `null`.
  * - An id that is not among `rows` gives `null`.
- * - Otherwise the result is `transformLonLatArrayToProjected(row, points)`, and what it throws
- *   (a failure on the implementation side, never an untransformable target) is passed on.
- * - The rows are copied when the transformer is created; changing them later has no effect.
+ * - Otherwise the result is `transformLonLatToCandidate(row, points)`: a plain point list when the
+ *   unit is metre (the same result as `transformLonLatArrayToProjected`), and `{ points, unit }`
+ *   when the row gives another unit (for example the yard of a historical grid).
+ * - What the conversion throws (a failure on the implementation side, never an untransformable
+ *   target) is passed on.
+ * - The rows are copied when the transformer is created, `unit` included; changing them later has
+ *   no effect, and neither does changing an earlier result.
  */
-export declare function createCandidateTransformer(rows: ReadonlyArray<Pick<ProjectedCrsInfo, "id" | "proj4">>, options?: TransformLonLatToProjectedOptions): AtlasCandidateTransformer;
+export declare function createCandidateTransformer(rows: ReadonlyArray<CandidateTransformerRow>, options?: TransformLonLatToProjectedOptions): AtlasCandidateTransformer;
+export {};
