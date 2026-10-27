@@ -81,15 +81,59 @@ call fails, for example because the wasm memory is full), the function throws, s
 never mistaken for an untransformable target.
 The function accepts lon/lat degree input only.
 
+### Units
+
+Coordinates are only meaningful together with their unit. `transformLonLatToCandidate` converts the
+same lon/lat degrees and returns the points with the linear unit they are in: `{ points, unit }`,
+where `unit` is a `LinearUnit` (`{ name, metresPerUnit }`, the number of metres in one unit).
+
+- For a CRS, the unit comes from the axis information of PROJ. A CRS in metres gives
+  `{ name: "metre", metresPerUnit: 1 }`; a CRS in feet gives its own name and factor, for example
+  `{ name: "US survey foot", metresPerUnit: 1200 / 3937 }` for `EPSG:2227`. Only a CRS whose
+  coordinate system is Cartesian (a projected CRS, not a geographic CRS whose axes are in degrees),
+  whose axes are east/north in two dimensions, and whose two axes have the same unit, is
+  transformed; any other target gives `null`.
+- For a pipeline of a custom or user definition (the bundled UTJCP historical zones, for example),
+  the definition describes the grid-to-lon/lat direction, so the points come back in the grid unit
+  of the row: the `unit` of the definition. The three historical zones declare
+  `{ name: "yard (Japan City Plans)", metresPerUnit: 0.9143985307444408 }`. A pipeline row without
+  `unit`, or with a `unit` that is not a linear unit (an empty `name`, a `metresPerUnit` that is not
+  a positive finite number), cannot be transformed and gives `null`, so a user projection file that
+  holds pipelines has to give each of them a usable `unit`.
+- `transformLonLatArrayToProjected` keeps its contract: it uses the same conversion and returns the
+  points only when the unit is metre, and `null` otherwise.
+- Units are never converted by Atlas. The points stay in the unit of the candidate; converting them,
+  or writing them out again, is up to the caller (Teiresias does it for the transformer built here).
+
+```ts
+import { listProjectedCrsFromProjWasm, transformLonLatToCandidate } from "@c4h/atlas";
+
+const rows = await listProjectedCrsFromProjWasm({
+  extent: { west: 135.6, south: 34.9, east: 135.9, north: 35.1 },
+  area: "Japan",
+  includeCustomProjections: true,
+  onshoreOnly: false,
+});
+const zoneB = rows.find((row) => row.id === "UTJCP:ZONE-B");
+
+const converted = await transformLonLatToCandidate(zoneB!, [[135.75, 35.0]]);
+
+console.log(converted?.unit); // { name: "yard (Japan City Plans)", metresPerUnit: 0.9143985307444408 }
+console.log(converted?.points); // [[x, y]] in that unit, or null
+```
+
 ### Using Atlas with Teiresias
 
 `createCandidateTransformer(rows)` turns candidate rows into a transformer with the same shape as
 the `CandidateTransformer` of [`@c4h/teiresias`](https://github.com/code4history/Teiresias), so the
 candidates found by Atlas can be ranked by `estimateCrs`. Atlas does not depend on Teiresias; the
 types match by shape. The transformer returns `null` for a geo basis other than
-`{ kind: "lonlat_deg", axisOrder: "lon-lat" }` and for an id that is not among the rows; otherwise it
-returns what `transformLonLatArrayToProjected` returns, and throws what it throws. The rows are copied
-when the transformer is created.
+`{ kind: "lonlat_deg", axisOrder: "lon-lat" }` and for an id that is not among the rows. Otherwise it
+returns a plain point list for a candidate in metres (the same points as
+`transformLonLatArrayToProjected`) and `{ points, unit }` for a candidate in another unit, and throws
+what the conversion throws. Teiresias takes the unit of that result, so the points of a historical
+grid are ranked and written out in yards. The rows are copied, `unit` included, when the transformer
+is created.
 
 ```ts
 import { createCandidateTransformer, listProjectedCrsFromProjWasm } from "@c4h/atlas";
@@ -172,7 +216,8 @@ Everything below is exported from `@c4h/atlas`.
 |---|---|
 | `listProjectedCrsFromProjWasm(options)` | Lists projected CRS candidates whose area of use contains `options.extent` (see Basic Usage). Returns `ProjectedCrsInfo[]`. |
 | `initializeProjWasmRuntime(options?)` | Loads the bundled proj-wasm runtime ahead of the first search. Optional; the other calls load it on demand. |
-| `transformLonLatArrayToProjected(target, points, options?)` | Transforms lon/lat degrees (lon-lat order) into `[easting, northing]` of one candidate. |
+| `transformLonLatArrayToProjected(target, points, options?)` | Transforms lon/lat degrees (lon-lat order) into `[easting, northing]` of one candidate, in metres only. |
+| `transformLonLatToCandidate(target, points, options?)` | Transforms lon/lat degrees (lon-lat order) into the coordinates of one candidate and returns them with their linear unit (`{ points, unit }`; see Units). |
 | `createCandidateTransformer(rows, options?)` | Builds an `AtlasCandidateTransformer` for Teiresias' `estimateCrs` (see Using Atlas with Teiresias). |
 | `isProjectedPrjPath(pathname)` | Tells whether a `.prj` path of the bundled Japanese WKT collection is a projected CRS. |
 | `inferDatumFamily(pathname)` | Reads the datum family (`CandidateDatumFamily`) from such a path. |
@@ -189,12 +234,13 @@ Everything below is exported from `@c4h/atlas`.
 
 | Name | What it describes |
 |---|---|
-| `ProjectedCrsInfo` | One candidate: `id`, `authority`, `code`, `name`, `areaName`, `deprecated`, `bbox`, `wkt2`, `proj4` and optional details. |
+| `ProjectedCrsInfo` | One candidate: `id`, `authority`, `code`, `name`, `areaName`, `deprecated`, `bbox`, `wkt2`, `proj4` and optional details. A custom or user pipeline row also carries the `unit` of its grid. |
+| `LinearUnit` | A linear unit of coordinates: `{ name, metresPerUnit }`, the number of metres in one unit. |
 | `ProjectedCrsExclusion` | A row left out of a search, with the reason (given to `onExcluded`). |
 | `ListProjectedCrsFromProjWasmOptions` | Options of `listProjectedCrsFromProjWasm`. |
 | `InitializeProjWasmRuntimeOptions` | Options of `initializeProjWasmRuntime` (`projWasmAssetBaseUrl`). |
-| `TransformLonLatToProjectedOptions` | Options of `transformLonLatArrayToProjected` and `createCandidateTransformer`. |
-| `AtlasCandidateTransformer` | The transformer `createCandidateTransformer` returns. |
+| `TransformLonLatToProjectedOptions` | Options of `transformLonLatArrayToProjected`, `transformLonLatToCandidate` and `createCandidateTransformer`. |
+| `AtlasCandidateTransformer` | The transformer `createCandidateTransformer` returns: a plain point list for a candidate in metres, otherwise `{ points, unit }`, or `null`. |
 | `AtlasGeoBasisLike` | The geo basis a transformer receives (compatible with Teiresias' `GeoBasis`). |
 | `CandidateCrsExtent` | A lon/lat extent `{ west, south, east, north }`. |
 | `CandidateBbox` | A lon/lat bounding box `{ west, south, east, north }`. |
