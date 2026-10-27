@@ -1,5 +1,5 @@
 import type { CandidateCrsExtent } from "./crs-types.ts";
-import { withPj } from "./proj-handle.ts";
+import { PjCache, withPj } from "./proj-handle.ts";
 import { projWasmExclusions } from "./proj-wasm-exclusions.ts";
 
 export interface ProjectedCrsInfo {
@@ -519,43 +519,99 @@ interface ProjAxisInfo {
 /**
  * target の検証結果は定義の文字列で決まるので、文字列ごとに 1 回だけ PJ を作って確かめる
  * （解放しても戻らない資源を、同じ target への変換のたびに使わないため）。
+ * 検証が throw したとき（実行時の失敗）は結果を覚えず、次の呼び出しで確かめ直す。
  */
 const eastNorthMetreCrsCache = new Map<string, Promise<boolean>>();
 
 function isEastNorthMetreCrsOnce(proj: typeof import("proj-wasm"), definition: string): Promise<boolean> {
   let pending = eastNorthMetreCrsCache.get(definition);
   if (pending === undefined) {
-    pending = isEastNorthMetreCrs(proj, definition);
-    eastNorthMetreCrsCache.set(definition, pending);
+    const created = isEastNorthMetreCrs(proj, definition);
+    pending = created;
+    eastNorthMetreCrsCache.set(definition, created);
+    created.catch(() => {
+      if (eastNorthMetreCrsCache.get(definition) === created) eastNorthMetreCrsCache.delete(definition);
+    });
   }
   return pending;
 }
 
+/**
+ * PROJ が「定義を読めない」と答えた例外か。proj-wasm 0.1.0-alpha8 は PROJ の C++ 例外を
+ * `new Error(message)` に包み、型名は worker の stack の先頭行（`osgeo::proj::io::ParsingException: …`）
+ * にだけ残す。定義の誤り（構文・値・未知の authority code）を表す 2 つの型だけを業務的な失敗とみなし、
+ * それ以外（SQLite の out of memory を含む FactoryException、wasm のメモリの枯渇など）は実装側の失敗とする。
+ * 型名が stack に無い実行環境では、読めない定義も throw になる（黙って null にするより安全な側）。
+ */
+const UNREADABLE_DEFINITION_ERROR = /^osgeo::proj::io::(?:ParsingException|NoSuchAuthorityCodeException)\b/;
+
+function isUnreadableDefinitionError(error: unknown): boolean {
+  return error instanceof Error && UNREADABLE_DEFINITION_ERROR.test(error.stack ?? "");
+}
+
+/**
+ * PROJ が「source から target への変換が無い」と答えた例外か（例: target が月や火星の CRS で、
+ * 地球の lon/lat から変換できない）。これは業務的に変換不能である。型名の読み方は上と同じ。
+ */
+const NO_OPERATION_ERROR = /^osgeo::proj::util::UnsupportedOperationException\b/;
+
+function isNoOperationError(error: unknown): boolean {
+  return error instanceof Error && NO_OPERATION_ERROR.test(error.stack ?? "");
+}
+
+/** pipeline を作れないと PROJ が答えた target。作り直しを試さないよう覚えておく（定義の文字列ごと）。 */
+const targetsWithoutOperation = new Set<string>();
+
+/**
+ * PROJ が読めない定義・CRS でないもの・座標系を持たないもの・軸と単位が east / north の metre で
+ * ないものは `false`（業務的に変換不能）。proj-wasm の呼び出しがそれ以外の理由で throw したとき
+ * （メモリが尽きたなど）は、そのまま throw する。
+ */
 async function isEastNorthMetreCrs(
   proj: typeof import("proj-wasm"),
   definition: string,
 ): Promise<boolean> {
   try {
-    return await withPj(proj, () => proj.projCreate({ definition }), async (pj) => {
-      if (!(await proj.projIsCrs({ obj: pj }))) return false;
-
-      return withPj(proj, () => proj.projCrsGetCoordinateSystem({ crs: pj }), async (cs) => {
-        if ((await proj.projCsGetAxisCount({ cs })) !== 2) return false;
-
-        const axes: ProjAxisInfo[] = [
-          (await proj.projCsGetAxisInfo({ cs, index: 0 })) as ProjAxisInfo,
-          (await proj.projCsGetAxisInfo({ cs, index: 1 })) as ProjAxisInfo,
-        ];
-
-        if (axes[0]?.direction !== "east" || axes[1]?.direction !== "north") return false;
-
-        return axes.every((axis) => axis.unitConvFactor === 1 && axis.unitName === "metre");
-      });
-    });
-  } catch {
-    return false;
+    return await checkEastNorthMetreCrs(proj, definition);
+  } catch (error) {
+    if (isUnreadableDefinitionError(error)) return false;
+    throw error;
   }
 }
+
+async function checkEastNorthMetreCrs(
+  proj: typeof import("proj-wasm"),
+  definition: string,
+): Promise<boolean> {
+  return withPj(proj, () => proj.projCreate({ definition }), async (pj) => {
+    if (pj === undefined || pj === null) return false;
+    if (!(await proj.projIsCrs({ obj: pj }))) return false;
+
+    return withPj(proj, () => proj.projCrsGetCoordinateSystem({ crs: pj }), async (cs) => {
+      if (cs === undefined || cs === null) return false;
+      if ((await proj.projCsGetAxisCount({ cs })) !== 2) return false;
+
+      const axes: ProjAxisInfo[] = [
+        (await proj.projCsGetAxisInfo({ cs, index: 0 })) as ProjAxisInfo,
+        (await proj.projCsGetAxisInfo({ cs, index: 1 })) as ProjAxisInfo,
+      ];
+
+      if (axes[0]?.direction !== "east" || axes[1]?.direction !== "north") return false;
+
+      return axes.every((axis) => axis.unitConvFactor === 1 && axis.unitName === "metre");
+    });
+  });
+}
+
+/**
+ * 変換の pipeline（lon/lat → target）の PJ を target の定義の文字列ごとに保持して使い回す。
+ * source は常に `LONLAT_WGS84_PROJ_STRING` なので、target の文字列だけで決まる。
+ * 上限は `area` なしの検索が返す行の数（約 2,200）を余裕をもって覆う数にしてある。
+ * 上限を越えると最も古い PJ を解放する（作り直すと解放しても戻らない資源をまた使うので、
+ * 普段の使い方では追い出しが起きない大きさにする）。
+ */
+const PIPELINE_CACHE_CAPACITY = 4096;
+const pipelineCache = new PjCache<string>(PIPELINE_CACHE_CAPACITY);
 
 /**
  * lon/lat（度・lon-lat 順）の点列を、target CRS の投影座標 `[easting, northing]` へ一括変換する。
@@ -564,7 +620,9 @@ async function isEastNorthMetreCrs(
  * - (3) 返却は常に `[easting, northing]` 順である（proj 文字列 pipeline により機構で保証する）。
  * - (4) 空入力・業務的に変換不能な target は `null`。
  * - (5) 部分成功はしない。入力または出力に非有限成分が 1 つでもあれば全体 `null`。
- * - (7) throw は実装 bug のときだけ。業務的失敗はすべて `null` へ落ちる。
+ * - (7) `null` は業務的に変換不能なとき（上の (4)(5)）だけに使う。実装側の理由で変換できない
+ *   とき（PJ を作れない・proj-wasm の呼び出しが throw する。wasm のメモリが尽きた場合を含む）は
+ *   `null` にせず throw する。
  * - (8) 出力は入力と同数・同順。
  *
  * 本 export は **`lonlat_deg` / lon-lat 順の入力専用**である（設計 K3）。`planar_xy` 入力の
@@ -587,41 +645,42 @@ export async function transformLonLatArrayToProjected(
   // step 2: target 検証（DEV-1。CRS であること・軸順 east/north・両軸 metre）
   if (!(await isEastNorthMetreCrsOnce(proj, target.proj4))) return null;
 
-  // step 3: pipeline 生成（proj 文字列 → proj 文字列。軸順は生成方法で決まる。設計 §3.2）
+  // step 3: pipeline 取得（proj 文字列 → proj 文字列。軸順は生成方法で決まる。設計 §3.2）。
+  //   target ごとに 1 つ作って使い回す。PROJ が「変換が無い」と答えた target は null（業務的に
+  //   変換不能）。それ以外の理由で作れない・変換できないときは throw する（契約 (7)）。
   // step 4: 一括変換（座標配列は JS 側の Float64Array で、wasm 側の解放は要らない）
   // step 5: 出力検査（1 点でも非有限なら全体 null。契約 (5)）
-  // pipeline の PJ は成功・失敗のどちらでも withPj が解放する。
-  let result: Array<[number, number]> | null;
-  try {
-    result = await withPj(proj, () => proj.projCreateCrsToCrs({
-      source_crs: LONLAT_WGS84_PROJ_STRING,
-      target_crs: target.proj4,
-    }), async (operation) => {
-      const coords = await proj.coordArray(points.length);
-      await proj.setCoords(
-        coords,
-        points.map(([lon, lat]) => [lon, lat, 0, 0] as const),
-      );
-      await proj.projTransArray({
-        p: operation,
-        direction: proj.PJ_FWD,
-        n: points.length,
-        coord: coords,
-      });
-
-      const transformed: Array<[number, number]> = [];
-      for (let index = 0; index < points.length; index += 1) {
-        const coordinate = await proj.getCoords(coords, index);
-        const easting = coordinate?.[0];
-        const northing = coordinate?.[1];
-        if (!Number.isFinite(easting) || !Number.isFinite(northing)) return null;
-        transformed.push([easting as number, northing as number]);
-      }
-      return transformed;
+  if (targetsWithoutOperation.has(target.proj4)) return null;
+  const result = await pipelineCache.use(proj, target.proj4, () => proj.projCreateCrsToCrs({
+    source_crs: LONLAT_WGS84_PROJ_STRING,
+    target_crs: target.proj4,
+  }), async (operation): Promise<Array<[number, number]> | null> => {
+    const coords = await proj.coordArray(points.length);
+    await proj.setCoords(
+      coords,
+      points.map(([lon, lat]) => [lon, lat, 0, 0] as const),
+    );
+    await proj.projTransArray({
+      p: operation,
+      direction: proj.PJ_FWD,
+      n: points.length,
+      coord: coords,
     });
-  } catch {
+
+    const transformed: Array<[number, number]> = [];
+    for (let index = 0; index < points.length; index += 1) {
+      const coordinate = await proj.getCoords(coords, index);
+      const easting = coordinate?.[0];
+      const northing = coordinate?.[1];
+      if (!Number.isFinite(easting) || !Number.isFinite(northing)) return null;
+      transformed.push([easting as number, northing as number]);
+    }
+    return transformed;
+  }).catch((error: unknown) => {
+    if (!isNoOperationError(error)) throw error;
+    targetsWithoutOperation.add(target.proj4);
     return null;
-  }
+  });
 
   // step 6: 入力と同数・同順で返却（契約 (8)）
   return result;
@@ -645,7 +704,8 @@ export type AtlasCandidateTransformer = (
  * - Points must be lon/lat degrees in lon-lat order (`{ kind: "lonlat_deg", axisOrder: "lon-lat" }`);
  *   any other geo basis gives `null`.
  * - An id that is not among `rows` gives `null`.
- * - Otherwise the result is `transformLonLatArrayToProjected(row, points)`.
+ * - Otherwise the result is `transformLonLatArrayToProjected(row, points)`, and what it throws
+ *   (a failure on the implementation side, never an untransformable target) is passed on.
  * - The rows are copied when the transformer is created; changing them later has no effect.
  */
 export function createCandidateTransformer(

@@ -79,7 +79,9 @@ export declare function listProjectedCrsFromProjWasm(options: ListProjectedCrsFr
  * - (3) 返却は常に `[easting, northing]` 順である（proj 文字列 pipeline により機構で保証する）。
  * - (4) 空入力・業務的に変換不能な target は `null`。
  * - (5) 部分成功はしない。入力または出力に非有限成分が 1 つでもあれば全体 `null`。
- * - (7) throw は実装 bug のときだけ。業務的失敗はすべて `null` へ落ちる。
+ * - (7) `null` は業務的に変換不能なとき（上の (4)(5)）だけに使う。実装側の理由で変換できない
+ *   とき（PJ を作れない・proj-wasm の呼び出しが throw する。wasm のメモリが尽きた場合を含む）は
+ *   `null` にせず throw する。
  * - (8) 出力は入力と同数・同順。
  *
  * 本 export は **`lonlat_deg` / lon-lat 順の入力専用**である（設計 K3）。`planar_xy` 入力の
@@ -101,7 +103,8 @@ export type AtlasCandidateTransformer = (id: string, points: ReadonlyArray<reado
  * - Points must be lon/lat degrees in lon-lat order (`{ kind: "lonlat_deg", axisOrder: "lon-lat" }`);
  *   any other geo basis gives `null`.
  * - An id that is not among `rows` gives `null`.
- * - Otherwise the result is `transformLonLatArrayToProjected(row, points)`.
+ * - Otherwise the result is `transformLonLatArrayToProjected(row, points)`, and what it throws
+ *   (a failure on the implementation side, never an untransformable target) is passed on.
  * - The rows are copied when the transformer is created; changing them later has no effect.
  */
 export declare function createCandidateTransformer(rows: ReadonlyArray<Pick<ProjectedCrsInfo, "id" | "proj4">>, options?: TransformLonLatToProjectedOptions): AtlasCandidateTransformer;

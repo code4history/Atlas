@@ -69,8 +69,11 @@ console.log(projected); // [[easting, northing], [easting, northing]] または 
 ```
 
 `null` は「業務的に変換不能」を意味します。空入力、入力または出力に非有限成分がある場合
-（部分成功はしません）、および target の定義が CRS でない・軸が east/north でない・単位が
-metre でない場合に返します（**単位換算はしません**）。throw は実装 bug のときだけです。
+（部分成功はしません）、および target の定義を PROJ が読めない・CRS でない・軸が east/north でない・
+単位が metre でない（**単位換算はしません**）・地球の lon/lat から変換できない（月の CRS など）
+場合に返します。`null` はこれら以外には使いません。
+実装側の理由で変換できないとき（PROJ object を作れない、proj-wasm の呼び出しが失敗する。wasm の
+メモリが尽きた場合を含む）は throw するので、変換できない target と取り違えることはありません。
 入力は lon/lat の度数のみを受け付けます。
 
 ### Teiresias と組み合わせる
@@ -79,8 +82,8 @@ metre でない場合に返します（**単位換算はしません**）。thro
 の `CandidateTransformer` と同じ形の関数を作ります。Atlas で引いた候補を、そのまま `estimateCrs`
 で順位づけできます。Atlas は Teiresias に依存しません（型は形で合わせています）。
 `geoBasis` が `{ kind: "lonlat_deg", axisOrder: "lon-lat" }` でないとき、および行に無い id のときは
-`null` を返し、それ以外は `transformLonLatArrayToProjected` の結果を返します。行は関数を作った
-時点で写し取ります。
+`null` を返し、それ以外は `transformLonLatArrayToProjected` の結果を返します（throw もそのまま
+伝えます）。行は関数を作った時点で写し取ります。
 
 ```ts
 import { createCandidateTransformer, listProjectedCrsFromProjWasm } from "@c4h/atlas";
@@ -120,10 +123,17 @@ const rows = await listProjectedCrsFromProjWasm({
 ### proj-wasm 0.1.0-alpha8 の既知の上限
 
 proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は返さず、wasm のメモリは 2 GiB が
-上限です。検索は PROJ object を使い回すので影響を受けません（1 つの process で 4,000 回の検索を実測）。
-`transformLonLatArrayToProjected`（と `createCandidateTransformer` が作る関数）は呼び出しごとに
-PROJ object を 1 つ作るので、1 つの process で約 20 万回（実測 199,698 回）呼ぶとメモリが尽き、
-以後は `null` を返します。その前に process を作り直して（ページを開き直して）ください。
+上限です。1 つの process で object を約 20 万個作るとメモリが尽きます。そこで Atlas は PROJ object を
+作り直さずに使い回します。
+
+- 検索は展開した行を使い回します（1 つの process で 4,000 回の検索を実測）。
+- `transformLonLatArrayToProjected`（と `createCandidateTransformer` が作る関数）は target の CRS
+  ごとに変換を 1 つ保持します（4,096 個まで。それを越えると最も前に使ったものから解放します）。
+  そのため、同じ target への呼び出しを繰り返してもメモリは尽きません（1 つの process で 21 万回を実測）。
+
+4,096 個を越える種類の target を回し続ける process だけが、object を作り直します。それでもメモリが
+尽きたときは、`null` ではなく throw します。そのときは process を作り直して（ページを開き直して）
+ください。
 
 ## 開発
 
