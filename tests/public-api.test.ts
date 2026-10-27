@@ -5,8 +5,8 @@ import { shouldExternalize } from "../vite.config.ts";
 /**
  * 公開 surface の増分を 2 件に固定する。
  *
- * 「最小 export」は実装行数ではなく `src/index.ts` の export 集合の増分件数で定義する
- * （設計メモ K2）。以前の baseline は**関数 12・型 9 の計 21 件**であり、
+ * 「最小 export」は実装行数ではなく `src/index.ts` の export 集合の増分件数で定義する。
+ * 以前の baseline は**関数 12・型 9 の計 21 件**であり、
  * 本タスクの増分は `transformLonLatArrayToProjected`（関数）と
  * `TransformLonLatToProjectedOptions`（型）の 2 件だけである。
  * その後に足した `transformLonLatToCandidate`（関数）と `LinearUnit`（型）の 2 件も、

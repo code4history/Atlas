@@ -2,9 +2,10 @@
  * Benchmark engine: the real `proj-wasm` and `proj4js` engines over real Atlas rows.
  *
  * The points are real summits from `demo/data/benchmark-places.json` (written out here so this
- * file does not depend on the dataset changing). They sit in the Kanto plain, where both of the
- * CRS used below are found by the Atlas search: `EPSG:2451` (plane rectangular IX) and
- * `UTJCP:ZONE-B` (historical grid zone B).
+ * file does not depend on the dataset changing). They are the mountains of Yamanashi and
+ * Shizuoka prefectures (the region of plane rectangular CS VIII), such as 大菩薩嶺 and 富士山.
+ * Both of the CRS used below are found by the Atlas search around these points: `EPSG:2451`
+ * (plane rectangular IX) and `UTJCP:ZONE-B` (historical grid zone B).
  *
  * The Atlas rows come from `listProjectedCrsFromProjWasm` through the same `runBenchmark` the
  * page calls, so a definition taken from somewhere else would show up here as a different row.
@@ -101,7 +102,10 @@ describe("benchmark engine: plane rectangular IX (EPSG:2451)", { timeout: ENGINE
     expect(row.proj4js.failure).toBe(0);
     expect(row.projWasm.maxErrorMeters).toBeLessThan(1e-6);
     expect(row.proj4js.maxErrorMeters).toBeLessThan(1e-6);
-    expect(Number.isFinite(row.forwardDifferenceMaxMeters)).toBe(true);
+    // The two engines compute the projection separately, so their forward outputs are close but
+    // not identical.
+    expect(row.forwardDifferenceMaxMeters).toBeGreaterThan(0);
+    expect(row.forwardDifferenceMaxMeters).toBeLessThan(1e-6);
     expect(row.status).toBe("ok");
   });
 });

@@ -236,7 +236,7 @@ export async function runProjWasmEngine({ projWasm, row, sequence, now = clock()
   } catch (error) {
     const message = messageOf(error);
     sequence.forEach((place, index) => fail(stats, index, place, message));
-    return finishStats(stats);
+    return { stats: finishStats(stats), forward };
   }
 
   const startedAt = now();
