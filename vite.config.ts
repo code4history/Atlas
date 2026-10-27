@@ -163,11 +163,10 @@ export default defineConfig({
       copyRuntimeAssets(),
       removeTsExtensions(),
       dts({
-        outDir: "dist",
+        outDirs: "dist",
         exclude: ["tests", "node_modules"],
-        rollupTypes: false,
+        bundleTypes: false,
         tsconfigPath: "./tsconfig.json",
-        logLevel: "silent",
         insertTypesEntry: true,
         staticImport: true,
         beforeWriteFile: (filePath, content) => ({
