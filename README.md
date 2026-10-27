@@ -89,15 +89,17 @@ where `unit` is a `LinearUnit` (`{ name, metresPerUnit }`, the number of metres 
 
 - For a CRS, the unit comes from the axis information of PROJ. A CRS in metres gives
   `{ name: "metre", metresPerUnit: 1 }`; a CRS in feet gives its own name and factor, for example
-  `{ name: "US survey foot", metresPerUnit: 1200 / 3937 }` for `EPSG:2227`. Only a CRS whose axes are
-  east/north in two dimensions, with the same unit on both axes, is transformed; any other target
-  gives `null`.
+  `{ name: "US survey foot", metresPerUnit: 1200 / 3937 }` for `EPSG:2227`. Only a CRS whose
+  coordinate system is Cartesian (a projected CRS, not a geographic CRS whose axes are in degrees),
+  whose axes are east/north in two dimensions, and whose two axes have the same unit, is
+  transformed; any other target gives `null`.
 - For a pipeline of a custom or user definition (the bundled UTJCP historical zones, for example),
   the definition describes the grid-to-lon/lat direction, so the points come back in the grid unit
   of the row: the `unit` of the definition. The three historical zones declare
   `{ name: "yard (Japan City Plans)", metresPerUnit: 0.9143985307444408 }`. A pipeline row without
-  `unit` cannot be transformed and gives `null`, so a user projection file that holds pipelines has
-  to give each of them a `unit`.
+  `unit`, or with a `unit` that is not a linear unit (an empty `name`, a `metresPerUnit` that is not
+  a positive finite number), cannot be transformed and gives `null`, so a user projection file that
+  holds pipelines has to give each of them a usable `unit`.
 - `transformLonLatArrayToProjected` keeps its contract: it uses the same conversion and returns the
   points only when the unit is metre, and `null` otherwise.
 - Units are never converted by Atlas. The points stay in the unit of the candidate; converting them,

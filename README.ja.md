@@ -86,13 +86,15 @@ console.log(projected); // [[easting, northing], [easting, northing]] または 
 
 - CRS のとき: 単位は PROJ の軸情報から取ります。metre の CRS なら
   `{ name: "metre", metresPerUnit: 1 }`、フィートの CRS ならその名前と係数（たとえば `EPSG:2227`
-  なら `{ name: "US survey foot", metresPerUnit: 1200 / 3937 }`）です。軸が east / north の 2 次元で、
-  両軸の単位が同じ線形単位の CRS だけを変換し、それ以外の target は `null` です。
+  なら `{ name: "US survey foot", metresPerUnit: 1200 / 3937 }`）です。座標系が直交（Cartesian。
+  軸が度の地理座標系は対象外）で、軸が east / north の 2 次元で、両軸の単位が同じ線形単位の CRS
+  だけを変換し、それ以外の target は `null` です。
 - custom / user の定義の pipeline（同梱の UTJCP 歴史的市区町村の格子など）のとき: 定義は
   「格子 → lon/lat（度）」の向きなので、点列は行の格子の単位（定義の `unit`）で返ります。同梱の
   3 つの zone は `{ name: "yard (Japan City Plans)", metresPerUnit: 0.9143985307444408 }` を
-  持っています。`unit` の無い pipeline の行は変換できず `null` になるので、pipeline を持つ user の
-  定義ファイルには行ごとに `unit` を書いてください。
+  持っています。`unit` の無い pipeline の行、`unit` が線形単位として不正な行（`name` が空、
+  `metresPerUnit` が正の有限の number でない）は変換できず `null` になるので、pipeline を持つ
+  user の定義ファイルには行ごとに使える `unit` を書いてください。
 - `transformLonLatArrayToProjected` の契約は変わりません。同じ変換を使い、単位が metre のときだけ
   点列を返し、それ以外は `null` を返します。
 - Atlas は単位換算をしません。点列は候補の単位のままで、換算や書き戻しは呼ぶ側の仕事です

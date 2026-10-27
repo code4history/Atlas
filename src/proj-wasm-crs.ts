@@ -565,7 +565,9 @@ interface ProjAxisInfo {
  * - CRS でない定義（pipeline。例: 同梱の custom projection の行）は `kind: "non-crs"`。
  *   その行は「格子 → lon/lat（度）」の向きの pipeline なので、逆向き（`PJ_INV`）に流す。
  * - PROJ が読めない定義は `kind: "unreadable"`（業務的に変換不能）。
- * - CRS でも、軸が east / north の 2 次元でない・両軸の単位が同じ線形単位でないときは `unit: null`。
+ * - CRS でも、座標系が直交（Cartesian）でない・軸が east / north の 2 次元でない・両軸の単位が
+ *   同じ線形単位でないときは `unit: null`。地理座標系の 2 軸はどちらも `degree` で、換算係数は
+ *   「1 度が何ラジアンか」であり、metre への倍率ではない ∴ 線形単位として扱わない。
  *   pipeline（CoordinateOperation）を `projCreateCrsToCrs` の target に渡しても **throw しない**。
  *   コンソールエラーだけを出して `undefined` を resolve し、それを `projTransArray` へ渡すと
  *   wasm ヒープ故障になる（proj-wasm で実測）∴ 生成前に弾く必要がある。
@@ -574,7 +576,7 @@ type ProjTargetKind = "crs" | "non-crs" | "unreadable";
 
 interface ProjTargetInspection {
   kind: ProjTargetKind;
-  /** east / north の 2 次元 CRS で、両軸の単位が同じ線形単位のときだけ。 */
+  /** 直交（Cartesian）な east / north の 2 次元 CRS で、両軸の単位が同じ線形単位のときだけ。 */
   unit: LinearUnit | null;
 }
 
@@ -624,6 +626,13 @@ async function readTarget(
 
     return withPj(proj, () => proj.projCrsGetCoordinateSystem({ crs: pj }), async (cs) => {
       if (cs === undefined || cs === null) return { kind: "crs", unit: null };
+
+      // 地理座標系の軸は度（1 度が何ラジアンかの係数）であって線形の単位ではない。
+      // 直交座標系（投影座標系）だけが metre への倍率を持つ。
+      if ((await proj.projCsGetType({ cs })) !== proj.PJ_CS_TYPE_CARTESIAN) {
+        return { kind: "crs", unit: null };
+      }
+
       if ((await proj.projCsGetAxisCount({ cs })) !== 2) return { kind: "crs", unit: null };
 
       const axes: ProjAxisInfo[] = [
@@ -646,6 +655,9 @@ const UNIT_FACTOR_RELATIVE_TOLERANCE = 1e-12;
 /**
  * 2 軸の単位が同じ線形単位のときだけその単位を返す。片方でも欠けている・換算係数が正の有限値で
  * ない・2 軸で違うときは `null`（業務的に変換不能）。
+ *
+ * 呼ぶ側が座標系の型（直交）を確かめている前提で、軸の単位だけを見る。地理座標系の軸も単位名は
+ * 同じ `degree` で係数も正の有限値なので、型を見ないとここを通ってしまう。
  */
 function linearUnitOfAxes(axes: ProjAxisInfo[]): LinearUnit | null {
   const [east, north] = axes as [ProjAxisInfo, ProjAxisInfo];
@@ -660,6 +672,20 @@ function linearUnitOfAxes(axes: ProjAxisInfo[]): LinearUnit | null {
   if (Math.abs(east.unitConvFactor - north.unitConvFactor) > larger * UNIT_FACTOR_RELATIVE_TOLERANCE) return null;
 
   return { name: east.unitName, metresPerUnit: east.unitConvFactor };
+}
+
+/**
+ * 行が持つ `unit` を線形単位として使えるか。名前が空でない文字列で、`metresPerUnit` が正の有限の
+ * number であること。定義ファイルの誤り（1 行の `unit` の書き間違い）は、その行だけを変換不能に
+ * する（ほかの候補と、呼ぶ側の推定全体を止めない）。
+ */
+function isValidLinearUnit(unit: unknown): unit is LinearUnit {
+  if (typeof unit !== "object" || unit === null) return false;
+  const candidate = unit as { name?: unknown; metresPerUnit?: unknown };
+  if (typeof candidate.name !== "string" || candidate.name.length === 0) return false;
+  return typeof candidate.metresPerUnit === "number"
+    && Number.isFinite(candidate.metresPerUnit)
+    && candidate.metresPerUnit > 0;
 }
 
 /** 1 単位が 1 metre で、名前が metre の単位か（metre の候補の返却は今までと同じ形にする）。 */
@@ -712,11 +738,13 @@ interface CandidateTransform {
 /**
  * lon/lat（度・lon-lat 順）の点列を、候補の座標へ変換し、単位を添えて返す。
  *
- * - CRS: 軸が east / north の 2 次元で、両軸の単位が同じ線形単位（換算係数が正の有限値・単位名が
- *   同じ）のときだけ変換する。単位は PROJ の軸情報から取る（metre なら
- *   `{ name: "metre", metresPerUnit: 1 }`）。
+ * - CRS: 座標系が直交（Cartesian）で、軸が east / north の 2 次元で、両軸の単位が同じ線形単位
+ *   （換算係数が正の有限値・単位名が同じ）のときだけ変換する。地理座標系の軸は度で、換算係数が
+ *   ラジアンであって metre への倍率ではないため対象外（`null`）。単位は PROJ の軸情報から取る
+ *   （metre なら `{ name: "metre", metresPerUnit: 1 }`）。
  * - CRS でない pipeline（custom / user の行の「格子 → lon/lat（度）」の向きの定義）: 行の `unit` を
- *   添えて、pipeline を逆向き（`PJ_INV`）に流す。行に `unit` が無ければ `null`（業務的に変換不能）。
+ *   添えて、pipeline を逆向き（`PJ_INV`）に流す。行に `unit` が無い・`unit` が線形単位として不正
+ *   （空の `name`、正の有限の number でない `metresPerUnit`）なときは `null`（業務的に変換不能）。
  * - 空入力・非有限の入力・非有限の出力・上の条件に合わない target は `null`（部分成功はしない）。
  *   実装側の理由で変換できないとき（PJ を作れない・proj-wasm の呼び出しが throw する。wasm の
  *   メモリが尽きた場合を含む）は `null` にせず throw する。
@@ -796,7 +824,7 @@ async function transformLonLatToCandidateOnce(
 
   // step 3': CRS でない pipeline。格子の単位は定義ファイルの行にしかない。
   const unit = target.unit;
-  if (unit === undefined) return null;
+  if (!isValidLinearUnit(unit)) return null;
 
   const transformed = await transformWithPipelineOnce(proj, target.proj4, points);
   return transformed === null ? null : { points: transformed, unit: { ...unit } };

@@ -109,11 +109,13 @@ export declare function listProjectedCrsFromProjWasm(options: ListProjectedCrsFr
 /**
  * lon/lat（度・lon-lat 順）の点列を、候補の座標へ変換し、単位を添えて返す。
  *
- * - CRS: 軸が east / north の 2 次元で、両軸の単位が同じ線形単位（換算係数が正の有限値・単位名が
- *   同じ）のときだけ変換する。単位は PROJ の軸情報から取る（metre なら
- *   `{ name: "metre", metresPerUnit: 1 }`）。
+ * - CRS: 座標系が直交（Cartesian）で、軸が east / north の 2 次元で、両軸の単位が同じ線形単位
+ *   （換算係数が正の有限値・単位名が同じ）のときだけ変換する。地理座標系の軸は度で、換算係数が
+ *   ラジアンであって metre への倍率ではないため対象外（`null`）。単位は PROJ の軸情報から取る
+ *   （metre なら `{ name: "metre", metresPerUnit: 1 }`）。
  * - CRS でない pipeline（custom / user の行の「格子 → lon/lat（度）」の向きの定義）: 行の `unit` を
- *   添えて、pipeline を逆向き（`PJ_INV`）に流す。行に `unit` が無ければ `null`（業務的に変換不能）。
+ *   添えて、pipeline を逆向き（`PJ_INV`）に流す。行に `unit` が無い・`unit` が線形単位として不正
+ *   （空の `name`、正の有限の number でない `metresPerUnit`）なときは `null`（業務的に変換不能）。
  * - 空入力・非有限の入力・非有限の出力・上の条件に合わない target は `null`（部分成功はしない）。
  *   実装側の理由で変換できないとき（PJ を作れない・proj-wasm の呼び出しが throw する。wasm の
  *   メモリが尽きた場合を含む）は `null` にせず throw する。

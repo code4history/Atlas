@@ -159,6 +159,16 @@ describe("transformLonLatToCandidate", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, (
     expect(converted!.points).toEqual(await transformLonLatArrayToProjected(row, KYOTO_GCPS));
   });
 
+  it("returns null for a geographic CRS, whose axes are in degrees and not in a linear unit", async () => {
+    // 地理座標系の 2 軸はどちらも degree で、換算係数は「1 度が何ラジアンか」である。
+    // これは metre への倍率ではないので、線形単位として返してはならない。
+    for (const definition of ["OGC:CRS84", "+proj=longlat +datum=WGS84 +type=crs"]) {
+      const target = { id: definition, proj4: definition };
+      await expect(transformLonLatToCandidate(target, KYOTO_THREE)).resolves.toBeNull();
+      await expect(transformLonLatArrayToProjected(target, KYOTO_THREE)).resolves.toBeNull();
+    }
+  });
+
   it("returns null for a pipeline row that declares no unit", async () => {
     const zoneB = await catalogRow("UTJCP:ZONE-B");
     const withoutUnit = { id: zoneB.id, proj4: zoneB.proj4 };
@@ -192,7 +202,18 @@ describe("transformLonLatToCandidate", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, (
     const converted = await transformLonLatToCandidate(row!, KYOTO_THREE);
     const builtIn = await transformLonLatToCandidate(zoneB, KYOTO_THREE);
     expect(converted).not.toBeNull();
+    expect(converted!.unit).toEqual({
+      name: "yard (Japan City Plans)",
+      metresPerUnit: YARD_OF_THE_HISTORICAL_GRID,
+    });
     expect(converted!.points).toEqual(builtIn!.points);
+
+    // 正しい `unit` の行は、transformer でも今までどおり点列と単位を返す。
+    const transformer = createCandidateTransformer([row!]);
+    const transformed = await transformer(row!.id, KYOTO_THREE, LONLAT);
+    expect(transformed).not.toBeNull();
+    expect(Array.isArray(transformed)).toBe(false);
+    expect((transformed as { unit: LinearUnit }).unit).toEqual(converted!.unit);
   });
 
   it("returns null for a user projection definition without a unit", async () => {
@@ -214,6 +235,48 @@ describe("transformLonLatToCandidate", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, (
     expect(row?.unit).toBeUndefined();
 
     await expect(transformLonLatToCandidate(row!, KYOTO_THREE)).resolves.toBeNull();
+  });
+
+  it("returns null for a user pipeline row whose unit is not a linear unit", async () => {
+    const zoneB = await catalogRow("UTJCP:ZONE-B");
+    // JSON には NaN と Infinity が無い（どちらも `null` として書かれる）。有限性の検査は、
+    // 行を直接渡す下の 2 回で確かめる。
+    const units = [
+      { name: "", metresPerUnit: -1 },
+      { name: "yard", metresPerUnit: 0 },
+      { name: "yard", metresPerUnit: "0.9144" },
+    ];
+
+    for (const [index, unit] of units.entries()) {
+      const [row] = await listProjectedCrsFromProjWasm({
+        extent: KYOTO_EXTENT,
+        area: "Atlas test grid",
+        userProjection: dataUrl({
+          authority: "ATLAS-TEST",
+          code: `BAD-UNIT-${index}`,
+          name: `Atlas test grid with a unit ${index}`,
+          areaName: "Atlas test grid zone",
+          deprecated: false,
+          bbox: { west: 131, south: 24, east: 139, north: 46 },
+          pipeline: zoneB.proj4,
+          unit,
+        }),
+      });
+      expect(row?.definitionType).toBe("user");
+
+      await expect(transformLonLatToCandidate(row!, KYOTO_THREE)).resolves.toBeNull();
+
+      const transformer = createCandidateTransformer([row!]);
+      await expect(transformer(row!.id, KYOTO_THREE, LONLAT)).resolves.toBeNull();
+    }
+
+    // `metresPerUnit` が number でない・有限でない場合も線形単位ではない。
+    for (const metresPerUnit of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const row = { id: "ATLAS-TEST:BAD-UNIT", proj4: zoneB.proj4, unit: { name: "yard", metresPerUnit } };
+      await expect(transformLonLatToCandidate(row, KYOTO_THREE)).resolves.toBeNull();
+      const transformer = createCandidateTransformer([row]);
+      await expect(transformer(row.id, KYOTO_THREE, LONLAT)).resolves.toBeNull();
+    }
   });
 
   it("returns null for an empty list, a non-finite point and a definition that cannot be read", async () => {
@@ -269,6 +332,11 @@ describe("createCandidateTransformer with units", { timeout: PROJ_WASM_TEST_TIME
     const result = await transformer("EPSG:6674", KYOTO_GCPS, LONLAT);
     expect(Array.isArray(result)).toBe(true);
     expect(result).toEqual(await transformLonLatArrayToProjected(row, KYOTO_GCPS));
+  });
+
+  it("returns null for a geographic CRS row, whose axes are in degrees", async () => {
+    const transformer = createCandidateTransformer([{ id: "geographic", proj4: "OGC:CRS84" }]);
+    await expect(transformer("geographic", KYOTO_GCPS, LONLAT)).resolves.toBeNull();
   });
 
   it("is not changed by a caller that changes an earlier result", async () => {
