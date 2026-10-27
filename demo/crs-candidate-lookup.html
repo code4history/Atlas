@@ -45,6 +45,11 @@
     <span id="status" class="c4h-status">初期化中...</span>
   </header>
 
+  <section class="atlas-presets" aria-label="Presets">
+    <div id="preset-bar" class="atlas-preset-bar"></div>
+    <p class="atlas-expectation"><strong>見え方:</strong> <span id="preset-expectation"></span></p>
+  </section>
+
   <div class="c4h-instructions">
     操作: クリックでマーカー追加 - 全マーカーの bbox で CRS 候補検索。候補選択で CRS bbox を表示。
   </div>
@@ -63,7 +68,11 @@
     <section class="c4h-card">
       <header class="atlas-card-header">
         <h2>Candidate CRS</h2>
-        <p id="result-count">No query yet.</p>
+        <div class="atlas-result-count-line">
+          <p id="result-count">No query yet.</p>
+          <p id="result-summary" class="atlas-result-summary"></p>
+        </div>
+        <p id="excluded-summary" class="atlas-result-summary"></p>
       </header>
       <div class="atlas-table-scroll">
         <table>
@@ -88,6 +97,12 @@
     </section>
   </div>
 
+  <footer class="c4h-portal-footer" id="version"></footer>
+
   <script type="module" src="./main.js"></script>
+  <script type="module">
+    import { initDemo } from "./main.js";
+    initDemo();
+  </script>
 </body>
 </html>

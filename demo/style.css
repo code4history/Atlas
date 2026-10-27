@@ -154,3 +154,71 @@ tbody tr.selected {
     aspect-ratio: 36 / 23;
   }
 }
+
+.atlas-presets {
+  margin: 0 24px 8px;
+  padding: 10px 14px;
+  background: #f8f9fb;
+  border: 1px solid #eef0f4;
+  border-radius: 6px;
+}
+
+.atlas-preset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.atlas-preset-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.atlas-preset-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #667;
+  margin-right: 2px;
+}
+
+.atlas-preset-btn {
+  border: 1px solid #c9d2de;
+  background: #fff;
+  color: #1a2744;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.atlas-preset-btn[aria-pressed="true"] {
+  border-color: #3a7bd5;
+  background: #3a7bd5;
+  color: #fff;
+}
+
+.atlas-preset-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.atlas-expectation {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #1a2744;
+}
+
+.atlas-result-count-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.atlas-result-summary {
+  font-size: 12px;
+  color: #667;
+  margin: 0;
+}
