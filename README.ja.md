@@ -223,6 +223,7 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 
 - 入口ページ: `index.html`
 - 実 demo: `demo/crs-candidate-lookup.html`
+- benchmark のデモ: `demo/benchmark.html`（同じ地点列・同じ CRS で proj-wasm と proj4js を往復させ、時間・成功／失敗・往復誤差・2 つのエンジンの順方向の出力の差・失敗の理由を並べます。地点データとその出典は `demo/data/benchmark-places.provenance.json`）
 - GitHub Pages: `https://code4history.github.io/Atlas/`
 
 デモ画面には 3 つの対比のプリセットがあり、それぞれ A と B の 2 ボタンを持ちます。

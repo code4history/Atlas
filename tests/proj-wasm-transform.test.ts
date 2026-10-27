@@ -1,12 +1,12 @@
 /**
- * `transformLonLatArrayToProjected` の契約検証（m2a-t1 設計 v1.5 §4 / §7）。
+ * `transformLonLatArrayToProjected` の契約検証。
  *
  * 対応 AC:
- * - m2a-t1/AC-2: 契約 (3)(4)(5)(7)(8)（空入力 / 非有限入力 / 非有限出力 / 生成不能 target /
+ * - 契約 (3)(4)(5)(7)(8)（空入力 / 非有限入力 / 非有限出力 / 生成不能 target /
  *   決定性 / 同数同順）
- * - m2a-t1/AC-3: 軸順を**独立な 3 証人**で示す
- * - m2a-t1/AC-4: 単位 gate（両軸が metre でない実在 CRS は `null`。単位換算しない）
- * - m2a-t1/AC-5: 非 CRS gate（Atlas custom projection の pipeline は `null`。throw しない）
+ * - 軸順を**独立な 3 証人**で示す
+ * - 単位 gate（両軸が metre でない実在 CRS は `null`。単位換算しない）
+ * - 非 CRS gate（Atlas custom projection の pipeline は `null`。throw しない）
  *
  * 本ファイルは PROJ の実 engine を通す。候補の `proj4` はハードコードせず、
  * `listProjectedCrsFromProjWasm`（実カタログ）と `projCreateFromDatabase`（実 DB）から取る。
@@ -19,7 +19,7 @@ import {
   type ProjectedCrsInfo,
 } from "../src/proj-wasm-crs.ts";
 
-/** 設計 §5.3 の GCP 5 点（京都近郊。lon/lat 度・lon-lat 順）。 */
+/** 京都近郊の GCP 5 点（lon/lat 度・lon-lat 順）。 */
 const KYOTO_GCPS: ReadonlyArray<readonly [number, number]> = [
   [135.6, 34.9],
   [135.9, 34.9],
@@ -34,7 +34,7 @@ type TransformTarget = Pick<ProjectedCrsInfo, "id" | "proj4">;
 
 let catalogDefaultPromise: Promise<ProjectedCrsInfo[]> | undefined;
 
-/** 既定 padding の実カタログ（設計 §3.5.1 の実測では 5 件）。 */
+/** 既定 padding の実カタログ（実測では 5 件）。 */
 function catalogDefault(): Promise<ProjectedCrsInfo[]> {
   if (!catalogDefaultPromise) {
     catalogDefaultPromise = listProjectedCrsFromProjWasm({
@@ -76,7 +76,7 @@ async function databaseTarget(id: string): Promise<TransformTarget> {
  */
 const PROJ_WASM_TEST_TIMEOUT_MS = 16_000;
 
-describe("m2a-t1/AC-2: transformLonLatArrayToProjected の契約 (3)(4)(5)(7)(8)", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
+describe("transformLonLatArrayToProjected の契約 (3)(4)(5)(7)(8)", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   it("空入力は null を返す（契約 (4)）", async () => {
     const target = await catalogTarget("EPSG:6674");
     await expect(transformLonLatArrayToProjected(target, [])).resolves.toBeNull();
@@ -100,7 +100,7 @@ describe("m2a-t1/AC-2: transformLonLatArrayToProjected の契約 (3)(4)(5)(7)(8)
 
   it("出力 1 点が非有限なら全体 null（engine は部分成功を返す。契約 (5)）", async () => {
     const target = await catalogTarget("EPSG:6674");
-    // lat=95 は定義域外。engine は当該要素だけ非有限にし、他 2 点は正常値を返す（設計 §3.3）。
+    // lat=95 は定義域外。engine は当該要素だけ非有限にし、他 2 点は正常値を返す（実測）。
     const outOfDomain: ReadonlyArray<readonly [number, number]> = [
       KYOTO_GCPS[0],
       [135.5, 95],
@@ -139,16 +139,16 @@ describe("m2a-t1/AC-2: transformLonLatArrayToProjected の契約 (3)(4)(5)(7)(8)
   });
 });
 
-describe("m2a-t1/AC-3: 返却が [easting, northing] 順であること（独立 3 証人）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
+describe("返却が [easting, northing] 順であること（独立 3 証人）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   /**
-   * tolerance の根拠（設計 §3.5.4 の該当行を転記する。行ごとに tolerance が違う）。
+   * tolerance の根拠（行ごとに tolerance が違う）。
    *
-   * #15 AC-3(ii) authority 経路との一致
+   * (ii) authority 経路との一致
    *   基準値 = 差 `0` m（実測・全桁一致）/ 変動源 1（実装間）= `0`
    *   変動源 2（PROJ 感度・`eps=1e-6` m）= 保守モデル `2e-6` m / 必要 `2e-6` m
    *   採用 tolerance = **`1e-3` m** / 下限余裕 **2.70 桁** / 上限余裕 8.0 桁（軸順取り違え `≈1e5` m）
    *
-   * #16 AC-3(iii) `projNormalizeForVisualization` との一致
+   * (iii) `projNormalizeForVisualization` との一致
    *   基準値 = 差 `0` m（実測・全桁一致）/ 変動源 1 = `0`
    *   変動源 2 = 保守モデル `2e-6` m / 必要 `2e-6` m
    *   採用 tolerance = **`1e-3` m** / 下限余裕 **2.70 桁** / 上限余裕 8.0 桁（同上）
@@ -221,7 +221,7 @@ describe("m2a-t1/AC-3: 返却が [easting, northing] 順であること（独立
       source_crs: "EPSG:4326",
       target_crs: "EPSG:6674",
     });
-    // 引数名は `obj` でのみ動作する（設計 §3.2 の実測）
+    // 引数名は `obj` でのみ動作する（実測）
     const normalized = await proj.projNormalizeForVisualization({ obj: authorityOp });
 
     const coords = await proj.coordArray(KYOTO_GCPS.length);
@@ -245,7 +245,7 @@ describe("m2a-t1/AC-3: 返却が [easting, northing] 順であること（独立
   });
 });
 
-describe("m2a-t1/AC-4: 単位 gate（metre でない実在 CRS は null）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
+describe("単位 gate（metre でない実在 CRS は null）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   it("EPSG:2225（US survey foot）は null を返し、単位換算した値を返さない", async () => {
     const target = await databaseTarget("EPSG:2225");
     // 実 DB 由来の proj4 が US survey foot であることを先に確かめる（gate の前提の可視化）
@@ -257,7 +257,7 @@ describe("m2a-t1/AC-4: 単位 gate（metre でない実在 CRS は null）", { t
   });
 });
 
-describe("m2a-t1/AC-5: 非 CRS gate（custom projection の pipeline は null）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
+describe("非 CRS gate（custom projection の pipeline は null）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   it("UTJCP:ZONE-B の pipeline を target にすると null を返し、throw しない", async () => {
     const rows = await listProjectedCrsFromProjWasm({
       includeCustomProjections: true,

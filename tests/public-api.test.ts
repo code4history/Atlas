@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { shouldExternalize } from "../vite.config.ts";
 
 /**
- * m2a-t1/AC-9a: 公開 surface の増分を 2 件に固定する。
+ * 公開 surface の増分を 2 件に固定する。
  *
  * 「最小 export」は実装行数ではなく `src/index.ts` の export 集合の増分件数で定義する
- * （m2a-t1 設計 K2 / §4.4）。m2a-t1 以前の baseline は**関数 12・型 9 の計 21 件**であり、
+ * （設計メモ K2）。以前の baseline は**関数 12・型 9 の計 21 件**であり、
  * 本タスクの増分は `transformLonLatArrayToProjected`（関数）と
  * `TransformLonLatToProjectedOptions`（型）の 2 件だけである。
  *
@@ -46,7 +46,7 @@ const EXPECTED_TYPE_EXPORTS = [
   "TransformLonLatToProjectedOptions",
 ] as const;
 
-/** m2a-t1 以前の公開 surface（関数 12・型 9）。増分の差分を数えるための baseline。 */
+/** 以前の公開 surface（関数 12・型 9）。増分の差分を数えるための baseline。 */
 const BASELINE_EXPORT_COUNT = 21;
 
 describe("public API alignment", () => {
@@ -57,7 +57,7 @@ describe("public API alignment", () => {
     expect("listProjectedCrsFromProjWasm" in atlas).toBe(true);
     expect("transformLonLatArrayToProjected" in atlas).toBe(true);
 
-    // m2a-t1/AC-9a: 増分は 2 件のみ（関数 13 + 型 10 = 23 = baseline 21 + 2）
+    // 増分は 2 件のみ（関数 13 + 型 10 = 23 = baseline 21 + 2）
     expect(Object.keys(atlas).sort()).toEqual([...EXPECTED_RUNTIME_EXPORTS]);
 
     const indexSource = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");

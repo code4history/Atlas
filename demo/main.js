@@ -9,7 +9,7 @@ import {
   worldToLonLat,
 } from "./map-geometry.ts";
 import { wktText } from "./detail-text.ts";
-import { PRESETS, buildLookupOptions } from "./presets.js";
+import { AREA_BY_MODE, NEUTRAL_EXPECTATION, PRESETS, buildLookupOptions } from "./presets.js";
 
 const MAP_WIDTH = 720;
 const MAP_HEIGHT = 460;
@@ -17,12 +17,13 @@ const MAP_HEIGHT = 460;
 // これを bleed として渡すことで、コピー境界でマーカーが早すぎる消え方をしない。
 const MARKER_BLEED_PX = 48;
 
+// The area name of each mode lives in `AREA_BY_MODE` (`demo/presets.js`) and is not repeated here.
 const COUNTRIES = {
-  auto: { label: "Auto", area: undefined, bounds: null },
-  japan: { label: "Japan", area: "Japan", bounds: { west: 122, south: 20, east: 154, north: 46 }, center: [137.5, 36.5], zoom: 5 },
-  united_states: { label: "United States", area: "United States", bounds: { west: -125, south: 24, east: -66, north: 49 }, center: [-96, 38], zoom: 4 },
-  korea: { label: "Korea", area: "Korea", bounds: { west: 124, south: 33, east: 132, north: 39.5 }, center: [128, 36.2], zoom: 6 },
-  china: { label: "China", area: "China", bounds: { west: 73, south: 18, east: 135, north: 54 }, center: [104, 35], zoom: 4 },
+  auto: { label: "Auto", bounds: null },
+  japan: { label: "Japan", bounds: { west: 122, south: 20, east: 154, north: 46 }, center: [137.5, 36.5], zoom: 5 },
+  united_states: { label: "United States", bounds: { west: -125, south: 24, east: -66, north: 49 }, center: [-96, 38], zoom: 4 },
+  korea: { label: "Korea", bounds: { west: 124, south: 33, east: 132, north: 39.5 }, center: [128, 36.2], zoom: 6 },
+  china: { label: "China", bounds: { west: 73, south: 18, east: 135, north: 54 }, center: [104, 35], zoom: 4 },
 };
 
 const DEFAULT_STATE = Object.freeze({
@@ -135,10 +136,10 @@ function deriveAutoArea() {
   if (state.areaMode !== "auto") return undefined;
   const firstMarker = state.markers[0];
   if (!firstMarker) return undefined;
-  return Object.entries(COUNTRIES)
+  const match = Object.entries(COUNTRIES)
     .filter(([key]) => key !== "auto")
-    .map(([, country]) => country)
-    .find((country) => pointInBounds(firstMarker, country.bounds))?.area;
+    .find(([, country]) => pointInBounds(firstMarker, country.bounds));
+  return match ? AREA_BY_MODE[match[0]] : undefined;
 }
 
 function currentLookupInput() {
@@ -612,10 +613,7 @@ function leavePreset() {
   state.activePreset = null;
   markPressed(null);
   const expectation = dom.getElementById("preset-expectation");
-  if (expectation) {
-    expectation.textContent =
-      "手で変えた入力（プリセットではない）。プリセットのボタンを押すと戻る。";
-  }
+  if (expectation) expectation.textContent = NEUTRAL_EXPECTATION;
 }
 
 function renderVersion() {

@@ -12,13 +12,23 @@
 const KYOTO = Object.freeze({ west: 135.6, south: 34.9, east: 135.9, north: 35.1 });
 const TOKYO = Object.freeze({ west: 139.6, south: 35.6, east: 139.85, north: 35.75 });
 
-/** Area names accepted by the proj.db `area` filter, keyed by the demo's select values. */
+/**
+ * Area names accepted by the proj.db `area` filter, keyed by the demo's select values.
+ *
+ * This is the single place the mapping is written down: `demo/main.js` reads it for the `auto`
+ * area it derives from a marker as well, so the select values, the derived area and the preset
+ * lookup can never disagree.
+ */
 export const AREA_BY_MODE = Object.freeze({
   japan: "Japan",
   united_states: "United States",
   korea: "Korea",
   china: "China",
 });
+
+/** The line shown when the input was changed by hand and no preset is pressed. */
+export const NEUTRAL_EXPECTATION =
+  "手で変えた入力（プリセットではない）。プリセットのボタンを押すと戻る。";
 
 function presetInput(extent, { areaFilterEnabled, includeCustomProjections }) {
   return Object.freeze({
