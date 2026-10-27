@@ -17,11 +17,12 @@ Atlas searches `proj.db` through `proj-wasm` and can optionally merge JSON-defin
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js >= 22
 - pnpm >= 10 for development
 
 ## Installation
 
+<!-- release-pinned:start -->
 ### pnpm
 
 ```sh
@@ -33,6 +34,7 @@ pnpm add @c4h/atlas
 ```sh
 npm install @c4h/atlas
 ```
+<!-- release-pinned:end -->
 
 ## Basic Usage
 
@@ -160,6 +162,47 @@ Only a process that keeps cycling through more than 4,096 different targets crea
 If the memory does run out, the calls throw instead of returning `null`; start a new process (or
 reload the page) then.
 
+## API
+
+Everything below is exported from `@c4h/atlas`.
+
+### Functions
+
+| Name | What it does |
+|---|---|
+| `listProjectedCrsFromProjWasm(options)` | Lists projected CRS candidates whose area of use contains `options.extent` (see Basic Usage). Returns `ProjectedCrsInfo[]`. |
+| `initializeProjWasmRuntime(options?)` | Loads the bundled proj-wasm runtime ahead of the first search. Optional; the other calls load it on demand. |
+| `transformLonLatArrayToProjected(target, points, options?)` | Transforms lon/lat degrees (lon-lat order) into `[easting, northing]` of one candidate. |
+| `createCandidateTransformer(rows, options?)` | Builds an `AtlasCandidateTransformer` for Teiresias' `estimateCrs` (see Using Atlas with Teiresias). |
+| `isProjectedPrjPath(pathname)` | Tells whether a `.prj` path of the bundled Japanese WKT collection is a projected CRS. |
+| `inferDatumFamily(pathname)` | Reads the datum family (`CandidateDatumFamily`) from such a path. |
+| `inferKind(pathname)` | Reads the kind of projection (`CandidateKind`) from such a path. |
+| `isScopeIncluded(kind, scope)` | Tells whether a `CandidateKind` belongs to a `CandidateSeedScope` (`"core"` or `"all"`). |
+| `inferWgsEquivalent(datumFamily)` | `true` unless the datum family is the old Tokyo datum. |
+| `extractAuthorityIdFromWkt(wkt)` | Returns the last `ID["authority","code"]` of a WKT string as a `CandidateAuthorityId`, or `undefined`. |
+| `extractWktName(wkt)` | Returns the name of the root CRS of a WKT string. |
+| `inferPriority(kind)` | Returns the sort priority of a `CandidateKind` (higher comes first). |
+| `inferApproximateBbox(pathname, kind)` | Returns an approximate `CandidateBbox` (the UTM zone, the world for Web Mercator, Japan otherwise). |
+| `bboxToPolygonWkt(bbox)` | Writes a `CandidateBbox` as a WKT `POLYGON`. |
+
+### Types
+
+| Name | What it describes |
+|---|---|
+| `ProjectedCrsInfo` | One candidate: `id`, `authority`, `code`, `name`, `areaName`, `deprecated`, `bbox`, `wkt2`, `proj4` and optional details. |
+| `ProjectedCrsExclusion` | A row left out of a search, with the reason (given to `onExcluded`). |
+| `ListProjectedCrsFromProjWasmOptions` | Options of `listProjectedCrsFromProjWasm`. |
+| `InitializeProjWasmRuntimeOptions` | Options of `initializeProjWasmRuntime` (`projWasmAssetBaseUrl`). |
+| `TransformLonLatToProjectedOptions` | Options of `transformLonLatArrayToProjected` and `createCandidateTransformer`. |
+| `AtlasCandidateTransformer` | The transformer `createCandidateTransformer` returns. |
+| `AtlasGeoBasisLike` | The geo basis a transformer receives (compatible with Teiresias' `GeoBasis`). |
+| `CandidateCrsExtent` | A lon/lat extent `{ west, south, east, north }`. |
+| `CandidateBbox` | A lon/lat bounding box `{ west, south, east, north }`. |
+| `CandidateAuthorityId` | `{ authority, code }`. |
+| `CandidateDatumFamily` | `"wgs84" \| "tokyo" \| "jgd2000" \| "jgd2011" \| "jgd2024"`. |
+| `CandidateKind` | `"web_mercator" \| "utm" \| "japan_plane_rectangular" \| "japan_land_area" \| "regional_map" \| "weather_map"`. |
+| `CandidateSeedScope` | `"core" \| "all"`. |
+
 ## Development
 
 - `pnpm run dev`: start the local demo site
@@ -167,6 +210,10 @@ reload the page) then.
 - `pnpm run build:demo`: build the GitHub Pages demo into `dist-demo/`
 - `pnpm run verify:demo`: build and verify the GitHub Pages artifact
 - `pnpm run test`: run the Vitest suite
+
+For an install of this repository on its own (outside a larger pnpm workspace), copy the CI
+settings first: `cp ci/pnpm-workspace.ci.yaml pnpm-workspace.yaml && pnpm install --frozen-lockfile`.
+Do not commit the copied `pnpm-workspace.yaml`.
 
 ## Publish
 
@@ -176,6 +223,10 @@ reload the page) then.
 - `pnpm run typecheck`
 - `pnpm run build`
 - `pnpm run verify:demo`
+- `pnpm run verify:packed-browser`
+
+Releases are published from GitHub Actions (`.github/workflows/publish.yml`). Changes are listed
+in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Demo
 
