@@ -17,11 +17,12 @@ English README is [here](./README.md).
 
 ## 要件
 
-- Node.js >= 20
+- Node.js >= 22
 - 開発時の pnpm >= 10
 
 ## インストール
 
+<!-- release-pinned:start -->
 ### pnpm
 
 ```sh
@@ -33,6 +34,7 @@ pnpm add @c4h/atlas
 ```sh
 npm install @c4h/atlas
 ```
+<!-- release-pinned:end -->
 
 ## 基本的な使い方
 
@@ -151,6 +153,47 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 尽きたときは、`null` ではなく throw します。そのときは process を作り直して（ページを開き直して）
 ください。
 
+## API
+
+以下はすべて `@c4h/atlas` から export されます。
+
+### 関数
+
+| 名前 | 働き |
+|---|---|
+| `listProjectedCrsFromProjWasm(options)` | 適用範囲が `options.extent` を含む投影 CRS の候補を列挙します（基本的な使い方を参照）。戻り値は `ProjectedCrsInfo[]` です。 |
+| `initializeProjWasmRuntime(options?)` | 同梱の proj-wasm を最初の検索より前に読み込みます。省略してよく、ほかの呼び出しが必要なときに読み込みます。 |
+| `transformLonLatArrayToProjected(target, points, options?)` | 経緯度（度・lon-lat 順）を 1 つの候補の `[easting, northing]` へ変換します。 |
+| `createCandidateTransformer(rows, options?)` | Teiresias の `estimateCrs` に渡す `AtlasCandidateTransformer` を作ります（Teiresias と組み合わせるを参照）。 |
+| `isProjectedPrjPath(pathname)` | 同梱の日本の WKT 集の `.prj` のパスが投影 CRS かどうかを返します。 |
+| `inferDatumFamily(pathname)` | そのパスから測地系の系統（`CandidateDatumFamily`）を読みます。 |
+| `inferKind(pathname)` | そのパスから投影の種類（`CandidateKind`）を読みます。 |
+| `isScopeIncluded(kind, scope)` | `CandidateKind` が `CandidateSeedScope`（`"core"` か `"all"`）に入るかを返します。 |
+| `inferWgsEquivalent(datumFamily)` | 旧日本測地系（Tokyo）のときだけ `false` を返します。 |
+| `extractAuthorityIdFromWkt(wkt)` | WKT の最後の `ID["authority","code"]` を `CandidateAuthorityId` で返します。無ければ `undefined` です。 |
+| `extractWktName(wkt)` | WKT の最上位の CRS の名前を返します。 |
+| `inferPriority(kind)` | `CandidateKind` の並べ順の優先度を返します（大きいほど先）。 |
+| `inferApproximateBbox(pathname, kind)` | おおよその `CandidateBbox` を返します（UTM はその帯、Web メルカトルは全球、ほかは日本）。 |
+| `bboxToPolygonWkt(bbox)` | `CandidateBbox` を WKT の `POLYGON` にします。 |
+
+### 型
+
+| 名前 | 表すもの |
+|---|---|
+| `ProjectedCrsInfo` | 候補 1 件。`id`・`authority`・`code`・`name`・`areaName`・`deprecated`・`bbox`・`wkt2`・`proj4` と任意の詳細。 |
+| `ProjectedCrsExclusion` | 検索から外した行と理由（`onExcluded` に渡ります）。 |
+| `ListProjectedCrsFromProjWasmOptions` | `listProjectedCrsFromProjWasm` の option。 |
+| `InitializeProjWasmRuntimeOptions` | `initializeProjWasmRuntime` の option（`projWasmAssetBaseUrl`）。 |
+| `TransformLonLatToProjectedOptions` | `transformLonLatArrayToProjected` と `createCandidateTransformer` の option。 |
+| `AtlasCandidateTransformer` | `createCandidateTransformer` が返す変換関数。 |
+| `AtlasGeoBasisLike` | 変換関数が受け取る座標の基準（Teiresias の `GeoBasis` と互換）。 |
+| `CandidateCrsExtent` | 経緯度の範囲 `{ west, south, east, north }`。 |
+| `CandidateBbox` | 経緯度の外接矩形 `{ west, south, east, north }`。 |
+| `CandidateAuthorityId` | `{ authority, code }`。 |
+| `CandidateDatumFamily` | `"wgs84" \| "tokyo" \| "jgd2000" \| "jgd2011" \| "jgd2024"`。 |
+| `CandidateKind` | `"web_mercator" \| "utm" \| "japan_plane_rectangular" \| "japan_land_area" \| "regional_map" \| "weather_map"`。 |
+| `CandidateSeedScope` | `"core" \| "all"`。 |
+
 ## 開発
 
 - `pnpm run dev`: ローカル demo site を起動
@@ -158,6 +201,10 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 - `pnpm run build:demo`: GitHub Pages 用 demo を `dist-demo/` に build
 - `pnpm run verify:demo`: GitHub Pages 用 artifact を build して検証
 - `pnpm run test`: Vitest を実行
+
+このリポジトリだけを単独で install するとき（より大きな pnpm workspace の外）は、先に CI の設定を
+写してください: `cp ci/pnpm-workspace.ci.yaml pnpm-workspace.yaml && pnpm install --frozen-lockfile`。
+写した `pnpm-workspace.yaml` は commit しないでください。
 
 ## Publish
 
@@ -167,6 +214,10 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 - `pnpm run typecheck`
 - `pnpm run build`
 - `pnpm run verify:demo`
+- `pnpm run verify:packed-browser`
+
+公開は GitHub Actions（`.github/workflows/publish.yml`）から行います。変更の記録は
+[CHANGELOG.md](./CHANGELOG.md) にあります。
 
 ## Demo
 

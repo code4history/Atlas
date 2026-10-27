@@ -24,7 +24,7 @@
   ],
   "engines": {
     "pnpm": ">=10",
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "pnpm run build:package-runtime && vite --host",
@@ -60,11 +60,11 @@
     "proj-wasm": "0.1.0-alpha8"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
-    "jszip": "^3.10.1",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "vite-plugin-dts": "^4.5.4",
-    "vitest": "^3.2.4"
+    "@types/node": "^26.6.5",
+    "jszip": "^3.10.2",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.5",
+    "vite-plugin-dts": "^5.1.0",
+    "vitest": "^5.0.4"
   }
 }

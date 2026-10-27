@@ -126,10 +126,10 @@ const PROJ4_UNAVAILABLE_REASONS = new Map<string, string>(
 );
 
 /**
- * `transformLonLatArrayToProjected` の source 側 CRS（m2a-t1 設計 §4.2 step 3）。
+ * `transformLonLatArrayToProjected` の source 側 CRS。
  *
  * proj 文字列で pipeline を作ると、CRS の coordinate system 自体が `[Easting, Northing]`
- * として構築される（設計 §3.2 の実測）。authority 文字列（`EPSG:4326`）を source にすると
+ * として構築される（proj-wasm で実測）。authority 文字列（`EPSG:4326`）を source にすると
  * 入力が `[lat, lon]` 順を要求され、誤ると `Infinity` が返る ∴ 文字列経路に固定する。
  */
 const LONLAT_WGS84_PROJ_STRING = "+proj=longlat +datum=WGS84 +no_defs +type=crs";
@@ -546,13 +546,12 @@ interface ProjAxisInfo {
 }
 
 /**
- * target が「軸が east / north の順で、両軸とも metre の 2 次元 CRS」であるかを機構で検証する
- * （m2a-t1 設計 §4.2 step 2 / DEV-1）。
+ * target が「軸が east / north の順で、両軸とも metre の 2 次元 CRS」であるかを機構で検証する。
  *
  * - pipeline（CoordinateOperation）を `projCreateCrsToCrs` の target に渡しても **throw しない**。
  *   コンソールエラーだけを出して `undefined` を resolve し、それを `projTransArray` へ渡すと
- *   wasm ヒープ故障になる（設計 §3.3 の実測）∴ 生成前に弾く必要がある。
- * - native 単位が metre でない候補は単位換算せず変換不能へ落とす（m1-t1 からの申し送り）。
+ *   wasm ヒープ故障になる（proj-wasm で実測）∴ 生成前に弾く必要がある。
+ * - native 単位が metre でない候補は単位換算せず変換不能へ落とす。
  */
 /**
  * target の検証結果は定義の文字列で決まるので、文字列ごとに 1 回だけ PJ を作って確かめる
@@ -654,7 +653,7 @@ const pipelineCache = new PjCache<string>(PIPELINE_CACHE_CAPACITY);
 /**
  * lon/lat（度・lon-lat 順）の点列を、target CRS の投影座標 `[easting, northing]` へ一括変換する。
  *
- * m2a-t1 設計 §4 の契約:
+ * 契約:
  * - (3) 返却は常に `[easting, northing]` 順である（proj 文字列 pipeline により機構で保証する）。
  * - (4) 空入力・業務的に変換不能な target は `null`。
  * - (5) 部分成功はしない。入力または出力に非有限成分が 1 つでもあれば全体 `null`。
@@ -663,8 +662,8 @@ const pipelineCache = new PjCache<string>(PIPELINE_CACHE_CAPACITY);
  *   `null` にせず throw する。
  * - (8) 出力は入力と同数・同順。
  *
- * 本 export は **`lonlat_deg` / lon-lat 順の入力専用**である（設計 K3）。`planar_xy` 入力の
- * 実 engine 経路は本サイクルの範囲外である。
+ * 本 export は **`lonlat_deg` / lon-lat 順の入力専用**である。`planar_xy` 入力の
+ * 実 engine 経路は持たない。
  */
 export async function transformLonLatArrayToProjected(
   target: Pick<ProjectedCrsInfo, "id" | "proj4">,
@@ -680,10 +679,10 @@ export async function transformLonLatArrayToProjected(
   await ensureProjInitialized(options);
   const proj = await loadProjWasm();
 
-  // step 2: target 検証（DEV-1。CRS であること・軸順 east/north・両軸 metre）
+  // step 2: target 検証（CRS であること・軸順 east/north・両軸 metre）
   if (!(await isEastNorthMetreCrsOnce(proj, target.proj4))) return null;
 
-  // step 3: pipeline 取得（proj 文字列 → proj 文字列。軸順は生成方法で決まる。設計 §3.2）。
+  // step 3: pipeline 取得（proj 文字列 → proj 文字列。軸順は生成方法で決まる）。
   //   target ごとに 1 つ作って使い回す。PROJ が「変換が無い」と答えた target は null（業務的に
   //   変換不能）。それ以外の理由で作れない・変換できないときは throw する（契約 (7)）。
   // step 4: 一括変換（座標配列は JS 側の Float64Array で、wasm 側の解放は要らない）
