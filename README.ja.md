@@ -266,6 +266,14 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 - 実 demo: `demo/crs-candidate-lookup.html`
 - GitHub Pages: `https://code4history.github.io/Atlas/`
 
+デモ画面には 3 つの対比のプリセットがあり、それぞれ A と B の 2 ボタンを持ちます。
+
+- `place`: 同じ設定のまま京都（A）と東京（B）の範囲を比べる。候補の平面直角座標系が変わり、片方は VI 系、もう片方は VIII・IX 系になる。
+- `historical-grid`: 京都の範囲で、歴史グリッドの投影を外した場合（A）と入れた場合（B）を比べる。B にだけ `UTJCP:ZONE-B` が加わり、件数が 1 つ増える。
+- `area-filter`: 京都の範囲で、地域を Japan に絞った場合（A）と絞らない場合（B）を比べる。絞らないと日本以外の CRS も一覧に並ぶ。
+
+プリセットを押すと、範囲の 4 隅にマーカーを置き、地図をその範囲へ寄せ、検索を 1 回だけ走らせ、「見え方」の 1 行を出します。押したあとも、既存のつまみ・地域の選択・地図操作はそのまま使えます。
+
 ## ライセンス
 
 MIT License です。[LICENSE](./LICENSE) を参照してください。
