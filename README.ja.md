@@ -111,7 +111,9 @@ lon/lat から始まり、PROJ には別の天体への変換が無く、同梱�
 - 外した行は `onExcluded` に理由 `Not on the Earth (celestial body: <名前>)` で渡します
   （京都の範囲・`area` なしでは 2,046 行。結果は 2,213 行から 167 行になります）。
 - 残したいとき（一覧を見るときなど）は `includeOtherCelestialBodies: true` を渡します。
-  そうして得た行を `transformLonLatArrayToProjected` にまとめて渡さないでください。
+  そうして得た行を、`transformLonLatArrayToProjected` にも、`createCandidateTransformer` を通して
+  Teiresias の `estimateCrs` にも、まとめて渡さないでください。`estimateCrs` は渡された候補を全部変換
+  するので、実行時が応答しなくなることがあり、変換に失敗した候補があれば推定全体が失敗になります。
 
 ### 同梱の proj-wasm で書き出せない行
 
