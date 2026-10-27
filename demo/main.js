@@ -7,6 +7,7 @@ import {
   worldCopyXs,
   worldToLonLat,
 } from "./map-geometry.ts";
+import { wktText } from "./detail-text.ts";
 
 const MAP_WIDTH = 720;
 const MAP_HEIGHT = 460;
@@ -245,7 +246,7 @@ function renderDetail() {
     <strong>Projection Text</strong>
     <pre>${escapeHtml(row.pipeline ?? row.proj4)}</pre>
     <strong>WKT</strong>
-    <pre>${escapeHtml(row.wkt2 ?? "No WKT2 definition for this custom projection.")}</pre>
+    <pre>${escapeHtml(wktText(row))}</pre>
   `;
 }
 

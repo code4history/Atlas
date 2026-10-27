@@ -75,6 +75,61 @@ definition is not a CRS, whose axes are not east/north, or whose units are not m
 (units are never converted). Exceptions are reserved for implementation bugs.
 The function accepts lon/lat degree input only.
 
+### Using Atlas with Teiresias
+
+`createCandidateTransformer(rows)` turns candidate rows into a transformer with the same shape as
+the `CandidateTransformer` of [`@c4h/teiresias`](https://github.com/code4history/Teiresias), so the
+candidates found by Atlas can be ranked by `estimateCrs`. Atlas does not depend on Teiresias; the
+types match by shape. The transformer returns `null` for a geo basis other than
+`{ kind: "lonlat_deg", axisOrder: "lon-lat" }` and for an id that is not among the rows; otherwise it
+returns what `transformLonLatArrayToProjected` returns. The rows are copied when the transformer is
+created.
+
+```ts
+import { createCandidateTransformer, listProjectedCrsFromProjWasm } from "@c4h/atlas";
+import { estimateCrs } from "@c4h/teiresias";
+
+const rows = await listProjectedCrsFromProjWasm({
+  extent: { west: 135.6, south: 34.9, east: 135.9, north: 35.1 },
+  area: "Japan",
+});
+
+const result = await estimateCrs(gcps, rows, {
+  transformer: createCandidateTransformer(rows),
+});
+```
+
+### Rows the bundled proj-wasm cannot export
+
+Some proj.db rows throw inside the bundled proj-wasm when they are exported. Atlas avoids those
+exports instead of letting the runtime break (the list is measured per proj-wasm version):
+
+- Rows whose PROJ string cannot be produced (30 rows, for example `EPSG:32600` and `ESRI:54051`)
+  are left out of the search result. Pass `onExcluded` to receive them once per search as
+  `ProjectedCrsExclusion[]` (`{ id, name, reason }`).
+- Rows whose WKT2 cannot be produced (992 rows: all `IGNF` rows and part of `IAU_2015`) stay in the
+  result with `wkt2: null`. `wkt2` can therefore be `null` for proj.db rows as well as for custom
+  projections.
+
+```ts
+const rows = await listProjectedCrsFromProjWasm({
+  extent,
+  onExcluded: (excluded) => console.log(excluded.map(({ id, reason }) => `${id}: ${reason}`)),
+});
+```
+
+Within one process, the proj.db listing and each row's WKT2 and PROJ string are built once and reused
+by later searches.
+
+### Known limit of proj-wasm 0.1.0-alpha8
+
+proj-wasm 0.1.0-alpha8 does not get back all memory when a PROJ object is released, and the wasm
+memory is capped at 2 GiB. Searches reuse their PROJ objects, so they are not affected (4,000
+searches in one process were measured). `transformLonLatArrayToProjected` (and the transformer from
+`createCandidateTransformer`) still builds one PROJ object per call: about 200,000 calls in one
+process (199,698 measured) fill the memory, after which calls return `null`. Start a new process
+(or reload the page) before that.
+
 ## Development
 
 - `pnpm run dev`: start the local demo site

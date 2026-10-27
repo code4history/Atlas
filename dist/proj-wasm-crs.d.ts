@@ -86,3 +86,22 @@ export declare function listProjectedCrsFromProjWasm(options: ListProjectedCrsFr
  * 実 engine 経路は本サイクルの範囲外である。
  */
 export declare function transformLonLatArrayToProjected(target: Pick<ProjectedCrsInfo, "id" | "proj4">, points: ReadonlyArray<readonly [number, number]>, options?: TransformLonLatToProjectedOptions): Promise<Array<[number, number]> | null>;
+/** The geo basis of the points given to a candidate transformer (structurally compatible with Teiresias' `GeoBasis`). */
+export type AtlasGeoBasisLike = {
+    kind: string;
+    axisOrder?: string;
+};
+/** A transformer with the same shape as Teiresias' `CandidateTransformer`. */
+export type AtlasCandidateTransformer = (id: string, points: ReadonlyArray<readonly [number, number]>, geoBasis: AtlasGeoBasisLike) => Promise<Array<[number, number]> | null>;
+/**
+ * Builds a candidate transformer from candidate rows (for example the result of
+ * `listProjectedCrsFromProjWasm`), so the rows can be passed to Teiresias' `estimateCrs`
+ * without Atlas depending on Teiresias.
+ *
+ * - Points must be lon/lat degrees in lon-lat order (`{ kind: "lonlat_deg", axisOrder: "lon-lat" }`);
+ *   any other geo basis gives `null`.
+ * - An id that is not among `rows` gives `null`.
+ * - Otherwise the result is `transformLonLatArrayToProjected(row, points)`.
+ * - The rows are copied when the transformer is created; changing them later has no effect.
+ */
+export declare function createCandidateTransformer(rows: ReadonlyArray<Pick<ProjectedCrsInfo, "id" | "proj4">>, options?: TransformLonLatToProjectedOptions): AtlasCandidateTransformer;

@@ -11,6 +11,7 @@ export {
   isScopeIncluded,
 } from "./crs-seed.ts";
 export {
+  createCandidateTransformer,
   initializeProjWasmRuntime,
   listProjectedCrsFromProjWasm,
   transformLonLatArrayToProjected,
@@ -18,6 +19,8 @@ export {
 
 export type { CandidateCrsExtent } from "./crs-types.ts";
 export type {
+  AtlasCandidateTransformer,
+  AtlasGeoBasisLike,
   InitializeProjWasmRuntimeOptions,
   ListProjectedCrsFromProjWasmOptions,
   ProjectedCrsExclusion,

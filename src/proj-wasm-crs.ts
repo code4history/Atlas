@@ -1,4 +1,5 @@
 import type { CandidateCrsExtent } from "./crs-types.ts";
+import { withPj } from "./proj-handle.ts";
 import { projWasmExclusions } from "./proj-wasm-exclusions.ts";
 
 export interface ProjectedCrsInfo {
@@ -107,6 +108,19 @@ let initPromise: Promise<void> | undefined;
 let projWasmModulePromise: Promise<typeof import("proj-wasm")> | undefined;
 let builtInCustomProjectionPromise: Promise<CustomProjectionDefinition[]> | undefined;
 let projWasmAssetResolverInstalled = false;
+
+/**
+ * proj.db の行の一覧と、行ごとの展開結果（WKT2・PROJ 文字列）を 1 process の中で使い回す。
+ *
+ * proj-wasm 0.1.0-alpha8 では、PROJ object を `proj_destroy` で解放しても取り戻せない資源が
+ * 作成のたびに残り、約 22 万回で wasm のメモリ上限（2 GiB）に当たって以後の検索が
+ * `SQLite error [ out of memory ]` で落ちる。`area` なしの検索は 1 回で約 2,200 行を展開するので、
+ * 毎回作り直すと約 100 回の検索で落ちる。展開結果は proj.db と proj-wasm の版で決まる
+ * （同じ process の中では変わらない）ので、同じ行の PJ は 1 回しか作らない。
+ * 作成の回数は proj.db の投影 CRS の行数（8,820）で頭打ちになる。
+ */
+let crsInfoListPromise: Promise<ProjDatabaseRow[]> | undefined;
+const expandedProjectedCrsCache = new Map<string, Promise<ProjectedCrsInfo>>();
 
 const BUILTIN_CUSTOM_PROJECTIONS_URL = new URL("../data/crs/custom-projections.json", import.meta.url);
 const PROJ_WASM_RUNTIME_ASSETS = [
@@ -228,16 +242,42 @@ function padExtent(extent: CandidateCrsExtent, paddingDeg: number): CandidateCrs
   };
 }
 
+function copyProjectedCrsInfo(info: ProjectedCrsInfo): ProjectedCrsInfo {
+  return { ...info, bbox: { ...info.bbox } };
+}
+
+/** 行の展開結果を使い回す。失敗した行は覚えず、次の呼び出しで作り直す。 */
+async function expandProjectedCrsInfoOnce(row: ProjDatabaseRow): Promise<ProjectedCrsInfo> {
+  const id = `${row.authName}:${row.code}`;
+  let pending = expandedProjectedCrsCache.get(id);
+  if (pending === undefined) {
+    pending = expandProjectedCrsInfo(row);
+    expandedProjectedCrsCache.set(id, pending);
+    pending.catch(() => {
+      if (expandedProjectedCrsCache.get(id) === pending) expandedProjectedCrsCache.delete(id);
+    });
+  }
+  return copyProjectedCrsInfo(await pending);
+}
+
+async function listProjDatabaseRows(proj: typeof import("proj-wasm")): Promise<ProjDatabaseRow[]> {
+  if (!crsInfoListPromise) {
+    crsInfoListPromise = proj.projGetCrsInfoListFromDatabase({}) as Promise<ProjDatabaseRow[]>;
+    crsInfoListPromise.catch(() => {
+      crsInfoListPromise = undefined;
+    });
+  }
+  return crsInfoListPromise;
+}
+
 async function expandProjectedCrsInfo(row: ProjDatabaseRow): Promise<ProjectedCrsInfo> {
   const proj = await loadProjWasm();
-  const pj = await proj.projCreateFromDatabase({
+  const id = `${row.authName}:${row.code}`;
+  const [wkt2, proj4] = await withPj(proj, () => proj.projCreateFromDatabase({
     auth_name: row.authName,
     code: row.code,
     category: proj.PJ_CATEGORY_CRS,
-  });
-
-  const id = `${row.authName}:${row.code}`;
-  const [wkt2, proj4] = await Promise.all([
+  }), (pj) => Promise.all([
     WKT2_UNAVAILABLE_IDS.has(id)
       ? null
       : proj.projAsWkt({
@@ -250,7 +290,7 @@ async function expandProjectedCrsInfo(row: ProjDatabaseRow): Promise<ProjectedCr
       type: proj.PJ_PROJ_5,
       options: null,
     }),
-  ]);
+  ]));
 
   return {
     id,
@@ -409,7 +449,7 @@ export async function listProjectedCrsFromProjWasm(
   await ensureProjInitialized(options);
   const proj = await loadProjWasm();
 
-  const rows = (await proj.projGetCrsInfoListFromDatabase({})) as ProjDatabaseRow[];
+  const rows = await listProjDatabaseRows(proj);
   const filtered = filterProjectedCrsRows(rows, options);
   const resultMap = new Map<string, ProjectedCrsInfo>();
 
@@ -423,7 +463,7 @@ export async function listProjectedCrsFromProjWasm(
   });
   options.onExcluded?.(excluded);
 
-  const projDbResults = await Promise.all(expandable.map((row) => expandProjectedCrsInfo(row)));
+  const projDbResults = await Promise.all(expandable.map((row) => expandProjectedCrsInfoOnce(row)));
   for (const row of projDbResults) {
     resultMap.set(row.id, row);
   }
@@ -474,30 +514,45 @@ interface ProjAxisInfo {
  *   wasm ヒープ故障になる（設計 §3.3 の実測）∴ 生成前に弾く必要がある。
  * - native 単位が metre でない候補は単位換算せず変換不能へ落とす（m1-t1 からの申し送り）。
  */
+/**
+ * target の検証結果は定義の文字列で決まるので、文字列ごとに 1 回だけ PJ を作って確かめる
+ * （解放しても戻らない資源を、同じ target への変換のたびに使わないため）。
+ */
+const eastNorthMetreCrsCache = new Map<string, Promise<boolean>>();
+
+function isEastNorthMetreCrsOnce(proj: typeof import("proj-wasm"), definition: string): Promise<boolean> {
+  let pending = eastNorthMetreCrsCache.get(definition);
+  if (pending === undefined) {
+    pending = isEastNorthMetreCrs(proj, definition);
+    eastNorthMetreCrsCache.set(definition, pending);
+  }
+  return pending;
+}
+
 async function isEastNorthMetreCrs(
   proj: typeof import("proj-wasm"),
   definition: string,
 ): Promise<boolean> {
-  let pj: unknown;
   try {
-    pj = await proj.projCreate({ definition });
+    return await withPj(proj, () => proj.projCreate({ definition }), async (pj) => {
+      if (!(await proj.projIsCrs({ obj: pj }))) return false;
+
+      return withPj(proj, () => proj.projCrsGetCoordinateSystem({ crs: pj }), async (cs) => {
+        if ((await proj.projCsGetAxisCount({ cs })) !== 2) return false;
+
+        const axes: ProjAxisInfo[] = [
+          (await proj.projCsGetAxisInfo({ cs, index: 0 })) as ProjAxisInfo,
+          (await proj.projCsGetAxisInfo({ cs, index: 1 })) as ProjAxisInfo,
+        ];
+
+        if (axes[0]?.direction !== "east" || axes[1]?.direction !== "north") return false;
+
+        return axes.every((axis) => axis.unitConvFactor === 1 && axis.unitName === "metre");
+      });
+    });
   } catch {
     return false;
   }
-
-  if (!(await proj.projIsCrs({ obj: pj }))) return false;
-
-  const cs = await proj.projCrsGetCoordinateSystem({ crs: pj });
-  if ((await proj.projCsGetAxisCount({ cs })) !== 2) return false;
-
-  const axes: ProjAxisInfo[] = [
-    (await proj.projCsGetAxisInfo({ cs, index: 0 })) as ProjAxisInfo,
-    (await proj.projCsGetAxisInfo({ cs, index: 1 })) as ProjAxisInfo,
-  ];
-
-  if (axes[0]?.direction !== "east" || axes[1]?.direction !== "north") return false;
-
-  return axes.every((axis) => axis.unitConvFactor === 1 && axis.unitName === "metre");
 }
 
 /**
@@ -528,47 +583,78 @@ export async function transformLonLatArrayToProjected(
   const proj = await loadProjWasm();
 
   // step 2: target 検証（DEV-1。CRS であること・軸順 east/north・両軸 metre）
-  if (!(await isEastNorthMetreCrs(proj, target.proj4))) return null;
+  if (!(await isEastNorthMetreCrsOnce(proj, target.proj4))) return null;
 
   // step 3: pipeline 生成（proj 文字列 → proj 文字列。軸順は生成方法で決まる。設計 §3.2）
-  let operation: unknown;
+  // step 4: 一括変換（座標配列は JS 側の Float64Array で、wasm 側の解放は要らない）
+  // step 5: 出力検査（1 点でも非有限なら全体 null。契約 (5)）
+  // pipeline の PJ は成功・失敗のどちらでも withPj が解放する。
+  let result: Array<[number, number]> | null;
   try {
-    operation = await proj.projCreateCrsToCrs({
+    result = await withPj(proj, () => proj.projCreateCrsToCrs({
       source_crs: LONLAT_WGS84_PROJ_STRING,
       target_crs: target.proj4,
+    }), async (operation) => {
+      const coords = await proj.coordArray(points.length);
+      await proj.setCoords(
+        coords,
+        points.map(([lon, lat]) => [lon, lat, 0, 0] as const),
+      );
+      await proj.projTransArray({
+        p: operation,
+        direction: proj.PJ_FWD,
+        n: points.length,
+        coord: coords,
+      });
+
+      const transformed: Array<[number, number]> = [];
+      for (let index = 0; index < points.length; index += 1) {
+        const coordinate = await proj.getCoords(coords, index);
+        const easting = coordinate?.[0];
+        const northing = coordinate?.[1];
+        if (!Number.isFinite(easting) || !Number.isFinite(northing)) return null;
+        transformed.push([easting as number, northing as number]);
+      }
+      return transformed;
     });
   } catch {
     return null;
-  }
-
-  // step 4: 一括変換
-  let coords: unknown;
-  try {
-    coords = await proj.coordArray(points.length);
-    await proj.setCoords(
-      coords,
-      points.map(([lon, lat]) => [lon, lat, 0, 0] as const),
-    );
-    await proj.projTransArray({
-      p: operation,
-      direction: proj.PJ_FWD,
-      n: points.length,
-      coord: coords,
-    });
-  } catch {
-    return null;
-  }
-
-  // step 5: 出力検査（1 点でも非有限なら全体 null。契約 (5)）
-  const result: Array<[number, number]> = [];
-  for (let index = 0; index < points.length; index += 1) {
-    const coordinate = await proj.getCoords(coords, index);
-    const easting = coordinate?.[0];
-    const northing = coordinate?.[1];
-    if (!Number.isFinite(easting) || !Number.isFinite(northing)) return null;
-    result.push([easting as number, northing as number]);
   }
 
   // step 6: 入力と同数・同順で返却（契約 (8)）
   return result;
+}
+
+/** The geo basis of the points given to a candidate transformer (structurally compatible with Teiresias' `GeoBasis`). */
+export type AtlasGeoBasisLike = { kind: string; axisOrder?: string };
+
+/** A transformer with the same shape as Teiresias' `CandidateTransformer`. */
+export type AtlasCandidateTransformer = (
+  id: string,
+  points: ReadonlyArray<readonly [number, number]>,
+  geoBasis: AtlasGeoBasisLike,
+) => Promise<Array<[number, number]> | null>;
+
+/**
+ * Builds a candidate transformer from candidate rows (for example the result of
+ * `listProjectedCrsFromProjWasm`), so the rows can be passed to Teiresias' `estimateCrs`
+ * without Atlas depending on Teiresias.
+ *
+ * - Points must be lon/lat degrees in lon-lat order (`{ kind: "lonlat_deg", axisOrder: "lon-lat" }`);
+ *   any other geo basis gives `null`.
+ * - An id that is not among `rows` gives `null`.
+ * - Otherwise the result is `transformLonLatArrayToProjected(row, points)`.
+ * - The rows are copied when the transformer is created; changing them later has no effect.
+ */
+export function createCandidateTransformer(
+  rows: ReadonlyArray<Pick<ProjectedCrsInfo, "id" | "proj4">>,
+  options?: TransformLonLatToProjectedOptions,
+): AtlasCandidateTransformer {
+  const byId = new Map(rows.map((row) => [row.id, { id: row.id, proj4: row.proj4 }]));
+  return async (id, points, geoBasis) => {
+    if (geoBasis.kind !== "lonlat_deg" || geoBasis.axisOrder !== "lon-lat") return null;
+    const target = byId.get(id);
+    if (target === undefined) return null;
+    return transformLonLatArrayToProjected(target, points, options);
+  };
 }

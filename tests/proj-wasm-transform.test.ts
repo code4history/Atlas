@@ -69,7 +69,14 @@ async function databaseTarget(id: string): Promise<TransformTarget> {
   return { id, proj4 };
 }
 
-describe("m2a-t1/AC-2: transformLonLatArrayToProjected の契約 (3)(4)(5)(7)(8)", () => {
+/**
+ * Tests here go through the real proj-wasm engine; the first one in a file also pays for its start-up.
+ * Timeout = twice the longest test measured while Atlas, Daedalus and Teiresias ran their tests at
+ * the same time (7756 ms, rounded up to whole seconds).
+ */
+const PROJ_WASM_TEST_TIMEOUT_MS = 16_000;
+
+describe("m2a-t1/AC-2: transformLonLatArrayToProjected の契約 (3)(4)(5)(7)(8)", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   it("空入力は null を返す（契約 (4)）", async () => {
     const target = await catalogTarget("EPSG:6674");
     await expect(transformLonLatArrayToProjected(target, [])).resolves.toBeNull();
@@ -132,7 +139,7 @@ describe("m2a-t1/AC-2: transformLonLatArrayToProjected の契約 (3)(4)(5)(7)(8)
   });
 });
 
-describe("m2a-t1/AC-3: 返却が [easting, northing] 順であること（独立 3 証人）", () => {
+describe("m2a-t1/AC-3: 返却が [easting, northing] 順であること（独立 3 証人）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   /**
    * tolerance の根拠（設計 §3.5.4 の該当行を転記する。行ごとに tolerance が違う）。
    *
@@ -238,7 +245,7 @@ describe("m2a-t1/AC-3: 返却が [easting, northing] 順であること（独立
   });
 });
 
-describe("m2a-t1/AC-4: 単位 gate（metre でない実在 CRS は null）", () => {
+describe("m2a-t1/AC-4: 単位 gate（metre でない実在 CRS は null）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   it("EPSG:2225（US survey foot）は null を返し、単位換算した値を返さない", async () => {
     const target = await databaseTarget("EPSG:2225");
     // 実 DB 由来の proj4 が US survey foot であることを先に確かめる（gate の前提の可視化）
@@ -250,7 +257,7 @@ describe("m2a-t1/AC-4: 単位 gate（metre でない実在 CRS は null）", () 
   });
 });
 
-describe("m2a-t1/AC-5: 非 CRS gate（custom projection の pipeline は null）", () => {
+describe("m2a-t1/AC-5: 非 CRS gate（custom projection の pipeline は null）", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   it("UTJCP:ZONE-B の pipeline を target にすると null を返し、throw しない", async () => {
     const rows = await listProjectedCrsFromProjWasm({
       includeCustomProjections: true,
