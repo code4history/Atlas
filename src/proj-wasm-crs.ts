@@ -343,12 +343,14 @@ function expandCustomProjectedCrsInfo(
     name: definition.name,
     areaName: definition.areaName,
     deprecated: definition.deprecated,
-    bbox: definition.bbox,
+    // The definitions are loaded once per process, so hand out copies: a caller that changes a
+    // result row must not change the definition used by later searches.
+    bbox: { ...definition.bbox },
     wkt2: definition.wkt2 ?? null,
     proj4,
     pipeline: definition.pipeline,
     isApproximate: definition.isApproximate ?? false,
-    source: definition.source ?? [],
+    source: [...(definition.source ?? [])],
     definitionType,
   };
 }
