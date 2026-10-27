@@ -103,6 +103,22 @@ const result = await estimateCrs(gcps, rows, {
 });
 ```
 
+### CRS of other celestial bodies
+
+proj.db also holds CRS of other celestial bodies (the Moon, Mars, ...: most of the `IAU_2015`
+authority and a few `ESRI` rows), many with a world-wide extent. `listProjectedCrsFromProjWasm`
+leaves them out by default: transformations start from lon/lat on the Earth, PROJ has no operation
+to another body, and with the bundled proj-wasm the exceptions this raises pile up until the runtime
+stops answering. The test uses the celestial body proj.db gives for each CRS (its ellipsoid's
+`celestial_body`, reported by PROJ as `celestialBodyName`); `IAU_2015` rows of the Earth stay.
+No PROJ object is created for the rows left out.
+
+- The rows left out are reported through `onExcluded` with the reason
+  `Not on the Earth (celestial body: <name>)` (for a Kyoto extent without `area`: 2,046 rows, and
+  the result goes from 2,213 to 167 rows).
+- Pass `includeOtherCelestialBodies: true` to keep them (for example to list them). Do not pass such
+  rows to `transformLonLatArrayToProjected` in bulk.
+
 ### Rows the bundled proj-wasm cannot export
 
 Some proj.db rows throw inside the bundled proj-wasm when they are exported. Atlas avoids those
@@ -110,7 +126,8 @@ exports instead of letting the runtime break (the list is measured per proj-wasm
 
 - Rows whose PROJ string cannot be produced (30 rows, for example `EPSG:32600` and `ESRI:54051`)
   are left out of the search result. Pass `onExcluded` to receive them once per search as
-  `ProjectedCrsExclusion[]` (`{ id, name, reason }`).
+  `ProjectedCrsExclusion[]` (`{ id, name, reason }`), together with the rows of other celestial
+  bodies above.
 - Rows whose WKT2 cannot be produced (992 rows: all `IGNF` rows and part of `IAU_2015`) stay in the
   result with `wkt2: null`. `wkt2` can therefore be `null` for proj.db rows as well as for custom
   projections.

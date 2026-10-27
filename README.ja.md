@@ -99,14 +99,28 @@ const result = await estimateCrs(gcps, rows, {
 });
 ```
 
+### 地球以外の天体の CRS
+
+proj.db には地球以外の天体（月・火星など。`IAU_2015` の大半と `ESRI` の一部）の CRS もあり、
+多くは範囲が全球です。`listProjectedCrsFromProjWasm` は既定でこれらを外します。変換は地球の
+lon/lat から始まり、PROJ には別の天体への変換が無く、同梱の proj-wasm ではそのとき起きる例外が
+積み重なると実行時が応答しなくなるためです。判定には proj.db が CRS ごとに持つ天体（楕円体の
+`celestial_body`。PROJ が `celestialBodyName` として返す値）を使います。`IAU_2015` でも地球の行は
+残します。外す行について PROJ object は作りません。
+
+- 外した行は `onExcluded` に理由 `Not on the Earth (celestial body: <名前>)` で渡します
+  （京都の範囲・`area` なしでは 2,046 行。結果は 2,213 行から 167 行になります）。
+- 残したいとき（一覧を見るときなど）は `includeOtherCelestialBodies: true` を渡します。
+  そうして得た行を `transformLonLatArrayToProjected` にまとめて渡さないでください。
+
 ### 同梱の proj-wasm で書き出せない行
 
 proj.db の行の中には、同梱の proj-wasm で書き出すと例外になるものがあります。Atlas は実行時を
 壊さないよう、その書き出しを避けます（一覧は proj-wasm の版ごとに実測しています）。
 
 - PROJ 文字列にできない行（30 行。例: `EPSG:32600`・`ESRI:54051`）は検索結果から外します。
-  `onExcluded` を渡すと、検索ごとに 1 回 `ProjectedCrsExclusion[]`（`{ id, name, reason }`）で
-  受け取れます。
+  `onExcluded` を渡すと、検索ごとに 1 回 `ProjectedCrsExclusion[]`（`{ id, name, reason }`）で、
+  上の地球以外の天体の行といっしょに受け取れます。
 - WKT2 にできない行（992 行。`IGNF` の全行と `IAU_2015` の一部）は `wkt2: null` で結果に残します。
   そのため `wkt2` は custom projection だけでなく proj.db の行でも `null` になりえます。
 
