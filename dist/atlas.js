@@ -1,18 +1,18 @@
-const w = {
+const j = {
   west: -180,
   south: -85.06,
   east: 180,
   north: 85.06
-}, P = {
+}, O = {
   west: 122,
   south: 20,
   east: 154,
   north: 46
 };
-function s0(I) {
+function c0(I) {
   return I.endsWith(".prj") && I.includes("日本周辺座標系_WKT2_英語/") && I.includes("/投影座標系/");
 }
-function a0(I) {
+function G0(I) {
   if (I.includes("/投影座標系/Web メルカトル/") || I.includes("/WGS 1984/")) return "wgs84";
   if (I.includes("/日本測地系 (Tokyo)/")) return "tokyo";
   if (I.includes("/日本測地系2000 (JGD2000)/")) return "jgd2000";
@@ -20,7 +20,7 @@ function a0(I) {
   if (I.includes("/日本測地系2024 (JGD2024)/")) return "jgd2024";
   throw new Error(`Unsupported datum family in path: ${I}`);
 }
-function i0(I) {
+function N0(I) {
   if (I.includes("/投影座標系/Web メルカトル/")) return "web_mercator";
   if (I.includes("/投影座標系/UTM 座標系/")) return "utm";
   if (I.includes("/投影座標系/平面直角座標系/"))
@@ -32,17 +32,17 @@ function i0(I) {
   if (I.includes("/投影座標系/天気図/")) return "weather_map";
   throw new Error(`Unsupported projected kind in path: ${I}`);
 }
-function c0(I, A) {
+function u0(I, A) {
   return A === "all" ? !0 : [
     "web_mercator",
     "utm",
     "japan_plane_rectangular"
   ].includes(I);
 }
-function G0(I) {
+function F0(I) {
   return I !== "tokyo";
 }
-function N0(I) {
+function d0(I) {
   const e = [...I.matchAll(/ID\["([^"]+)","([^"]+)"\]/g)].at(-1);
   if (e)
     return {
@@ -50,12 +50,12 @@ function N0(I) {
       code: e[2]
     };
 }
-function F0(I) {
+function C0(I) {
   const A = I.match(/^[A-Z]+CRS\["([^"]+)"/);
   if (!A) throw new Error(`Unable to extract WKT root name from: ${I}`);
   return A[1];
 }
-function u0(I) {
+function l0(I) {
   switch (I) {
     case "web_mercator":
       return 100;
@@ -71,15 +71,15 @@ function u0(I) {
       return 40;
   }
 }
-function j(I) {
+function y(I) {
   const A = I.match(/Zone[_ ](\d{2})N|第 ?(\d{2}) ?帯 ?N/u), e = A?.[1] ?? A?.[2];
   if (!e) throw new Error(`Unable to extract UTM zone from path: ${I}`);
   return Number(e);
 }
-function d0(I, A) {
-  if (A === "web_mercator") return w;
+function T0(I, A) {
+  if (A === "web_mercator") return j;
   if (A === "utm") {
-    const U = (j(I) - 1) * 6 - 180;
+    const U = (y(I) - 1) * 6 - 180;
     return {
       west: U,
       south: 0,
@@ -87,13 +87,13 @@ function d0(I, A) {
       north: 84
     };
   }
-  return P;
+  return O;
 }
-function C0(I) {
+function M0(I) {
   const { west: A, south: e, east: U, north: r } = I;
   return `POLYGON((${A} ${e}, ${U} ${e}, ${U} ${r}, ${A} ${r}, ${A} ${e}))`;
 }
-async function S(I, A, e) {
+async function g(I, A, e) {
   const U = await A();
   try {
     return await e(U);
@@ -105,7 +105,7 @@ async function S(I, A, e) {
       }
   }
 }
-class O {
+class W {
   entries = /* @__PURE__ */ new Map();
   capacity;
   constructor(A) {
@@ -121,13 +121,13 @@ class O {
     let t = this.entries.get(e);
     t === void 0 ? (t = { object: this.createObject(e, U), users: 0, evicted: !1, released: !1 }, this.entries.set(e, t), this.evictOverflow(A)) : (this.entries.delete(e), this.entries.set(e, t)), t.users += 1;
     try {
-      let _;
+      let n;
       try {
-        _ = await t.object;
-      } catch (n) {
-        throw this.entries.get(e) === t && this.entries.delete(e), t.released = !0, n;
+        n = await t.object;
+      } catch (_) {
+        throw this.entries.get(e) === t && this.entries.delete(e), t.released = !0, _;
       }
-      return await r(_);
+      return await r(n);
     } finally {
       t.users -= 1, t.evicted && t.users === 0 && await this.release(A, t);
     }
@@ -154,7 +154,7 @@ class O {
     }
   }
 }
-const E = {
+const b = {
   wkt2Unavailable: [
     "IAU_2015:1020",
     "IAU_2015:1025",
@@ -1271,11 +1271,17 @@ const E = {
       reason: "Unsupported conversion method: Berghaus_Star"
     }
   ]
-}, b = 15, W = new Set(E.wkt2Unavailable), y = new Map(
-  E.proj4Unavailable.map((I) => [I.id, I.reason])
-), v = "+proj=longlat +datum=WGS84 +no_defs +type=crs";
-let C, T, M, m = !1, N;
-const F = /* @__PURE__ */ new Map(), D = new URL("data:application/json;base64,ewogICJwcm9qZWN0aW9ucyI6IFsKICAgIHsKICAgICAgImF1dGhvcml0eSI6ICJVVEpDUCIsCiAgICAgICJjb2RlIjogIlpPTkUtQSIsCiAgICAgICJuYW1lIjogIkphcGFuIENpdHkgUGxhbnMgUG9seWNvbmljIEdyaWQgWm9uZSBBIiwKICAgICAgImFyZWFOYW1lIjogIkphcGFuIENpdHkgUGxhbnMgLSBIaXN0b3JpY2FsIEdyaWQgWm9uZSBBIiwKICAgICAgImRlcHJlY2F0ZWQiOiBmYWxzZSwKICAgICAgImJib3giOiB7CiAgICAgICAgIndlc3QiOiAxMzksCiAgICAgICAgInNvdXRoIjogMjQsCiAgICAgICAgImVhc3QiOiAxNDcsCiAgICAgICAgIm5vcnRoIjogNDYKICAgICAgfSwKICAgICAgInBpcGVsaW5lIjogIitwcm9qPXBpcGVsaW5lICtzdGVwICtpbnYgK3Byb2o9cG9seSArbGF0XzA9NDAuNSArbG9uXzA9MTQzICt4XzA9OTE0Mzk4LjUzMDc0NDQ0MDggK3lfMD0xODI4Nzk3LjA2MTQ4ODg4MTYgK2VsbHBzPWNscms2NiArdG9fbWV0ZXI9MC45MTQzOTg1MzA3NDQ0NDA4ICtzdGVwICtwcm9qPWNhcnQgK2VsbHBzPWJlc3NlbCArc3RlcCArcHJvaj1oZWxtZXJ0ICt4PS0xNDYuMzM2ICt5PTUwNi44MzIgK3o9NjgwLjI1NCArc3RlcCAraW52ICtwcm9qPWNhcnQgK2VsbHBzPVdHUzg0ICtzdGVwICtwcm9qPXVuaXRjb252ZXJ0ICt4eV9pbj1yYWQgK3h5X291dD1kZWciLAogICAgICAid2t0MiI6IG51bGwsCiAgICAgICJpc0FwcHJveGltYXRlIjogdHJ1ZSwKICAgICAgInNvdXJjZSI6IFsKICAgICAgICAiaHR0cHM6Ly9ibG9nLmNvZGU0aGlzdG9yeS5kZXYvZW50cnkvMjAxMzAyMjAvMTM2MTM5MDE0OCIsCiAgICAgICAgImh0dHBzOi8vYmxvZy5jb2RlNGhpc3RvcnkuZGV2L2VudHJ5LzIwMTMwMjE2LzEzNjA5NjgyMjAiCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJhdXRob3JpdHkiOiAiVVRKQ1AiLAogICAgICAiY29kZSI6ICJaT05FLUIiLAogICAgICAibmFtZSI6ICJKYXBhbiBDaXR5IFBsYW5zIFBvbHljb25pYyBHcmlkIFpvbmUgQiIsCiAgICAgICJhcmVhTmFtZSI6ICJKYXBhbiBDaXR5IFBsYW5zIC0gSGlzdG9yaWNhbCBHcmlkIFpvbmUgQiIsCiAgICAgICJkZXByZWNhdGVkIjogZmFsc2UsCiAgICAgICJiYm94IjogewogICAgICAgICJ3ZXN0IjogMTMxLAogICAgICAgICJzb3V0aCI6IDI0LAogICAgICAgICJlYXN0IjogMTM5LAogICAgICAgICJub3J0aCI6IDQ2CiAgICAgIH0sCiAgICAgICJwaXBlbGluZSI6ICIrcHJvaj1waXBlbGluZSArc3RlcCAraW52ICtwcm9qPXBvbHkgK2xhdF8wPTQwLjUgK2xvbl8wPTEzNSAreF8wPTkxNDM5OC41MzA3NDQ0NDA4ICt5XzA9MTgyODc5Ny4wNjE0ODg4ODE2ICtlbGxwcz1jbHJrNjYgK3RvX21ldGVyPTAuOTE0Mzk4NTMwNzQ0NDQwOCArc3RlcCArcHJvaj1jYXJ0ICtlbGxwcz1iZXNzZWwgK3N0ZXAgK3Byb2o9aGVsbWVydCAreD0tMTQ2LjMzNiAreT01MDYuODMyICt6PTY4MC4yNTQgK3N0ZXAgK2ludiArcHJvaj1jYXJ0ICtlbGxwcz1XR1M4NCArc3RlcCArcHJvaj11bml0Y29udmVydCAreHlfaW49cmFkICt4eV9vdXQ9ZGVnIiwKICAgICAgIndrdDIiOiBudWxsLAogICAgICAiaXNBcHByb3hpbWF0ZSI6IHRydWUsCiAgICAgICJzb3VyY2UiOiBbCiAgICAgICAgImh0dHBzOi8vYmxvZy5jb2RlNGhpc3RvcnkuZGV2L2VudHJ5LzIwMTMwMjIwLzEzNjEzOTAxNDgiLAogICAgICAgICJodHRwczovL2Jsb2cuY29kZTRoaXN0b3J5LmRldi9lbnRyeS8yMDEzMDIxNi8xMzYwOTY4MjIwIgogICAgICBdCiAgICB9LAogICAgewogICAgICAiYXV0aG9yaXR5IjogIlVUSkNQIiwKICAgICAgImNvZGUiOiAiWk9ORS1DIiwKICAgICAgIm5hbWUiOiAiSmFwYW4gQ2l0eSBQbGFucyBQb2x5Y29uaWMgR3JpZCBab25lIEMiLAogICAgICAiYXJlYU5hbWUiOiAiSmFwYW4gQ2l0eSBQbGFucyAtIEhpc3RvcmljYWwgR3JpZCBab25lIEMiLAogICAgICAiZGVwcmVjYXRlZCI6IGZhbHNlLAogICAgICAiYmJveCI6IHsKICAgICAgICAid2VzdCI6IDEyMywKICAgICAgICAic291dGgiOiAyNCwKICAgICAgICAiZWFzdCI6IDEzMSwKICAgICAgICAibm9ydGgiOiA0NgogICAgICB9LAogICAgICAicGlwZWxpbmUiOiAiK3Byb2o9cGlwZWxpbmUgK3N0ZXAgK2ludiArcHJvaj1wb2x5ICtsYXRfMD00MC41ICtsb25fMD0xMjcgK3hfMD05MTQzOTguNTMwNzQ0NDQwOCAreV8wPTE4Mjg3OTcuMDYxNDg4ODgxNiArZWxscHM9Y2xyazY2ICt0b19tZXRlcj0wLjkxNDM5ODUzMDc0NDQ0MDggK3N0ZXAgK3Byb2o9Y2FydCArZWxscHM9YmVzc2VsICtzdGVwICtwcm9qPWhlbG1lcnQgK3g9LTE0Ni4zMzYgK3k9NTA2LjgzMiArej02ODAuMjU0ICtzdGVwICtpbnYgK3Byb2o9Y2FydCArZWxscHM9V0dTODQgK3N0ZXAgK3Byb2o9dW5pdGNvbnZlcnQgK3h5X2luPXJhZCAreHlfb3V0PWRlZyIsCiAgICAgICJ3a3QyIjogbnVsbCwKICAgICAgImlzQXBwcm94aW1hdGUiOiB0cnVlLAogICAgICAic291cmNlIjogWwogICAgICAgICJodHRwczovL2Jsb2cuY29kZTRoaXN0b3J5LmRldi9lbnRyeS8yMDEzMDIyMC8xMzYxMzkwMTQ4IiwKICAgICAgICAiaHR0cHM6Ly9ibG9nLmNvZGU0aGlzdG9yeS5kZXYvZW50cnkvMjAxMzAyMTYvMTM2MDk2ODIyMCIKICAgICAgXQogICAgfQogIF0KfQo=", import.meta.url), B = [
+}, L = 15, v = "Earth";
+function w(I) {
+  const A = I.celestialBodyName;
+  if (!(typeof A != "string" || A.length === 0))
+    return A === v ? void 0 : A;
+}
+const D = new Set(b.wkt2Unavailable), B = new Map(
+  b.proj4Unavailable.map((I) => [I.id, I.reason])
+), x = "+proj=longlat +datum=WGS84 +no_defs +type=crs";
+let l, T, M, h = !1, u;
+const F = /* @__PURE__ */ new Map(), z = new URL("data:application/json;base64,ewogICJwcm9qZWN0aW9ucyI6IFsKICAgIHsKICAgICAgImF1dGhvcml0eSI6ICJVVEpDUCIsCiAgICAgICJjb2RlIjogIlpPTkUtQSIsCiAgICAgICJuYW1lIjogIkphcGFuIENpdHkgUGxhbnMgUG9seWNvbmljIEdyaWQgWm9uZSBBIiwKICAgICAgImFyZWFOYW1lIjogIkphcGFuIENpdHkgUGxhbnMgLSBIaXN0b3JpY2FsIEdyaWQgWm9uZSBBIiwKICAgICAgImRlcHJlY2F0ZWQiOiBmYWxzZSwKICAgICAgImJib3giOiB7CiAgICAgICAgIndlc3QiOiAxMzksCiAgICAgICAgInNvdXRoIjogMjQsCiAgICAgICAgImVhc3QiOiAxNDcsCiAgICAgICAgIm5vcnRoIjogNDYKICAgICAgfSwKICAgICAgInBpcGVsaW5lIjogIitwcm9qPXBpcGVsaW5lICtzdGVwICtpbnYgK3Byb2o9cG9seSArbGF0XzA9NDAuNSArbG9uXzA9MTQzICt4XzA9OTE0Mzk4LjUzMDc0NDQ0MDggK3lfMD0xODI4Nzk3LjA2MTQ4ODg4MTYgK2VsbHBzPWNscms2NiArdG9fbWV0ZXI9MC45MTQzOTg1MzA3NDQ0NDA4ICtzdGVwICtwcm9qPWNhcnQgK2VsbHBzPWJlc3NlbCArc3RlcCArcHJvaj1oZWxtZXJ0ICt4PS0xNDYuMzM2ICt5PTUwNi44MzIgK3o9NjgwLjI1NCArc3RlcCAraW52ICtwcm9qPWNhcnQgK2VsbHBzPVdHUzg0ICtzdGVwICtwcm9qPXVuaXRjb252ZXJ0ICt4eV9pbj1yYWQgK3h5X291dD1kZWciLAogICAgICAid2t0MiI6IG51bGwsCiAgICAgICJpc0FwcHJveGltYXRlIjogdHJ1ZSwKICAgICAgInNvdXJjZSI6IFsKICAgICAgICAiaHR0cHM6Ly9ibG9nLmNvZGU0aGlzdG9yeS5kZXYvZW50cnkvMjAxMzAyMjAvMTM2MTM5MDE0OCIsCiAgICAgICAgImh0dHBzOi8vYmxvZy5jb2RlNGhpc3RvcnkuZGV2L2VudHJ5LzIwMTMwMjE2LzEzNjA5NjgyMjAiCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJhdXRob3JpdHkiOiAiVVRKQ1AiLAogICAgICAiY29kZSI6ICJaT05FLUIiLAogICAgICAibmFtZSI6ICJKYXBhbiBDaXR5IFBsYW5zIFBvbHljb25pYyBHcmlkIFpvbmUgQiIsCiAgICAgICJhcmVhTmFtZSI6ICJKYXBhbiBDaXR5IFBsYW5zIC0gSGlzdG9yaWNhbCBHcmlkIFpvbmUgQiIsCiAgICAgICJkZXByZWNhdGVkIjogZmFsc2UsCiAgICAgICJiYm94IjogewogICAgICAgICJ3ZXN0IjogMTMxLAogICAgICAgICJzb3V0aCI6IDI0LAogICAgICAgICJlYXN0IjogMTM5LAogICAgICAgICJub3J0aCI6IDQ2CiAgICAgIH0sCiAgICAgICJwaXBlbGluZSI6ICIrcHJvaj1waXBlbGluZSArc3RlcCAraW52ICtwcm9qPXBvbHkgK2xhdF8wPTQwLjUgK2xvbl8wPTEzNSAreF8wPTkxNDM5OC41MzA3NDQ0NDA4ICt5XzA9MTgyODc5Ny4wNjE0ODg4ODE2ICtlbGxwcz1jbHJrNjYgK3RvX21ldGVyPTAuOTE0Mzk4NTMwNzQ0NDQwOCArc3RlcCArcHJvaj1jYXJ0ICtlbGxwcz1iZXNzZWwgK3N0ZXAgK3Byb2o9aGVsbWVydCAreD0tMTQ2LjMzNiAreT01MDYuODMyICt6PTY4MC4yNTQgK3N0ZXAgK2ludiArcHJvaj1jYXJ0ICtlbGxwcz1XR1M4NCArc3RlcCArcHJvaj11bml0Y29udmVydCAreHlfaW49cmFkICt4eV9vdXQ9ZGVnIiwKICAgICAgIndrdDIiOiBudWxsLAogICAgICAiaXNBcHByb3hpbWF0ZSI6IHRydWUsCiAgICAgICJzb3VyY2UiOiBbCiAgICAgICAgImh0dHBzOi8vYmxvZy5jb2RlNGhpc3RvcnkuZGV2L2VudHJ5LzIwMTMwMjIwLzEzNjEzOTAxNDgiLAogICAgICAgICJodHRwczovL2Jsb2cuY29kZTRoaXN0b3J5LmRldi9lbnRyeS8yMDEzMDIxNi8xMzYwOTY4MjIwIgogICAgICBdCiAgICB9LAogICAgewogICAgICAiYXV0aG9yaXR5IjogIlVUSkNQIiwKICAgICAgImNvZGUiOiAiWk9ORS1DIiwKICAgICAgIm5hbWUiOiAiSmFwYW4gQ2l0eSBQbGFucyBQb2x5Y29uaWMgR3JpZCBab25lIEMiLAogICAgICAiYXJlYU5hbWUiOiAiSmFwYW4gQ2l0eSBQbGFucyAtIEhpc3RvcmljYWwgR3JpZCBab25lIEMiLAogICAgICAiZGVwcmVjYXRlZCI6IGZhbHNlLAogICAgICAiYmJveCI6IHsKICAgICAgICAid2VzdCI6IDEyMywKICAgICAgICAic291dGgiOiAyNCwKICAgICAgICAiZWFzdCI6IDEzMSwKICAgICAgICAibm9ydGgiOiA0NgogICAgICB9LAogICAgICAicGlwZWxpbmUiOiAiK3Byb2o9cGlwZWxpbmUgK3N0ZXAgK2ludiArcHJvaj1wb2x5ICtsYXRfMD00MC41ICtsb25fMD0xMjcgK3hfMD05MTQzOTguNTMwNzQ0NDQwOCAreV8wPTE4Mjg3OTcuMDYxNDg4ODgxNiArZWxscHM9Y2xyazY2ICt0b19tZXRlcj0wLjkxNDM5ODUzMDc0NDQ0MDggK3N0ZXAgK3Byb2o9Y2FydCArZWxscHM9YmVzc2VsICtzdGVwICtwcm9qPWhlbG1lcnQgK3g9LTE0Ni4zMzYgK3k9NTA2LjgzMiArej02ODAuMjU0ICtzdGVwICtpbnYgK3Byb2o9Y2FydCArZWxscHM9V0dTODQgK3N0ZXAgK3Byb2o9dW5pdGNvbnZlcnQgK3h5X2luPXJhZCAreHlfb3V0PWRlZyIsCiAgICAgICJ3a3QyIjogbnVsbCwKICAgICAgImlzQXBwcm94aW1hdGUiOiB0cnVlLAogICAgICAic291cmNlIjogWwogICAgICAgICJodHRwczovL2Jsb2cuY29kZTRoaXN0b3J5LmRldi9lbnRyeS8yMDEzMDIyMC8xMzYxMzkwMTQ4IiwKICAgICAgICAiaHR0cHM6Ly9ibG9nLmNvZGU0aGlzdG9yeS5kZXYvZW50cnkvMjAxMzAyMTYvMTM2MDk2ODIyMCIKICAgICAgXQogICAgfQogIF0KfQo=", import.meta.url), K = [
   "proj.db",
   "proj.ini",
   "proj-worker.mjs",
@@ -1283,40 +1289,40 @@ const F = /* @__PURE__ */ new Map(), D = new URL("data:application/json;base64,e
   "proj-emscripten.js",
   "proj-emscripten.wasm"
 ];
-function x() {
+function J() {
   return typeof globalThis.document < "u";
 }
-function z() {
+function Z() {
   const I = new URL(import.meta.url);
   return I.pathname = I.pathname.replace(/[^/]*$/, ""), I.search = "", I.hash = "", I;
 }
-function K(I = z()) {
-  if (!x() || m || typeof fetch != "function")
+function Y(I = Z()) {
+  if (!J() || h || typeof fetch != "function")
     return;
   const A = typeof I == "string" ? new URL(I, import.meta.url) : I;
   globalThis.__ATLAS_PROJ_WASM_ASSET_BASE_URL__ = A.href;
   const e = globalThis.fetch.bind(globalThis);
   globalThis.fetch = async (U, r) => {
-    const t = typeof U == "string" ? U : U instanceof URL ? U.href : U.url, _ = globalThis.location?.href ?? import.meta.url, n = new URL(t, _).pathname, a = B.find((i) => n.endsWith(`/${i}`));
-    if (a) {
-      const i = new URL(a, A), o = await e(i, r);
-      if (a === "proj.db") {
-        const c = Number(o.headers.get("content-length") ?? 0) || (await o.clone().arrayBuffer()).byteLength;
-        if (c < 1e6)
+    const t = typeof U == "string" ? U : U instanceof URL ? U.href : U.url, n = globalThis.location?.href ?? import.meta.url, _ = new URL(t, n).pathname, s = K.find((i) => _.endsWith(`/${i}`));
+    if (s) {
+      const i = new URL(s, A), c = await e(i, r);
+      if (s === "proj.db") {
+        const a = Number(c.headers.get("content-length") ?? 0) || (await c.clone().arrayBuffer()).byteLength;
+        if (a < 1e6)
           throw new Error(
-            `Resolved proj.db from ${i.href}, but received only ${c} bytes. Restart the Vite dev server and verify that the proj-wasm runtime assets are served from the demo assets path.`
+            `Resolved proj.db from ${i.href}, but received only ${a} bytes. Restart the Vite dev server and verify that the proj-wasm runtime assets are served from the demo assets path.`
           );
       }
-      return o;
+      return c;
     }
     return e(U, r);
-  }, m = !0;
+  }, h = !0;
 }
-function d() {
+function C() {
   return T || (T = import("proj-wasm")), T;
 }
-async function g(I) {
-  return C || (K(I?.projWasmAssetBaseUrl), C = d().then((A) => A.init({ workers: 1 }))), C;
+async function m(I) {
+  return l || (Y(I?.projWasmAssetBaseUrl), l = C().then((A) => A.init({ workers: 1 }))), l;
 }
 function R(I, A) {
   return I <= A ? [[I, A]] : [
@@ -1324,15 +1330,15 @@ function R(I, A) {
     [-180, A]
   ];
 }
-function J(I, A) {
+function H(I, A) {
   if (I.south > A.south || I.north < A.north)
     return !1;
   const e = R(I.west, I.east);
   return R(A.west, A.east).every(([r, t]) => e.some(
-    ([_, n]) => _ <= r && n >= t
+    ([n, _]) => n <= r && _ >= t
   ));
 }
-function Z(I, A) {
+function V(I, A) {
   return A <= 0 ? I : {
     west: Math.max(-180, I.west - A),
     south: Math.max(-90, I.south - A),
@@ -1340,28 +1346,28 @@ function Z(I, A) {
     north: Math.min(90, I.north + A)
   };
 }
-function Y(I) {
+function Q(I) {
   return { ...I, bbox: { ...I.bbox } };
 }
-async function H(I) {
+async function X(I) {
   const A = `${I.authName}:${I.code}`;
   let e = F.get(A);
-  return e === void 0 && (e = Q(I), F.set(A, e), e.catch(() => {
+  return e === void 0 && (e = $(I), F.set(A, e), e.catch(() => {
     F.get(A) === e && F.delete(A);
-  })), Y(await e);
+  })), Q(await e);
 }
-async function V(I) {
-  return N || (N = I.projGetCrsInfoListFromDatabase({}), N.catch(() => {
-    N = void 0;
-  })), N;
+async function k(I) {
+  return u || (u = I.projGetCrsInfoListFromDatabase({}), u.catch(() => {
+    u = void 0;
+  })), u;
 }
-async function Q(I) {
-  const A = await d(), e = `${I.authName}:${I.code}`, [U, r] = await S(A, () => A.projCreateFromDatabase({
+async function $(I) {
+  const A = await C(), e = `${I.authName}:${I.code}`, [U, r] = await g(A, () => A.projCreateFromDatabase({
     auth_name: I.authName,
     code: I.code,
     category: A.PJ_CATEGORY_CRS
   }), (t) => Promise.all([
-    W.has(e) ? null : A.projAsWkt({
+    D.has(e) ? null : A.projAsWkt({
       pj: t,
       type: A.PJ_WKT2_2019,
       options: null
@@ -1390,12 +1396,12 @@ async function Q(I) {
     definitionType: "projdb"
   };
 }
-function h(I) {
+function f(I) {
   return {
     authName: I.authority,
     code: I.code,
     name: I.name,
-    type: b,
+    type: L,
     deprecated: I.deprecated,
     bboxValid: !0,
     westLonDegree: I.bbox.west,
@@ -1405,7 +1411,7 @@ function h(I) {
     areaName: I.areaName
   };
 }
-function f(I, A) {
+function p(I, A) {
   const e = I.proj4 ?? I.pipeline;
   if (!e)
     throw new Error(`Custom projection ${I.authority}:${I.code} is missing proj4/pipeline text`);
@@ -1427,11 +1433,11 @@ function f(I, A) {
     definitionType: A
   };
 }
-function l(I, A) {
-  const e = A.area?.trim().toLowerCase(), U = A.bboxPaddingDeg ?? 0.1, r = A.includeDeprecated ?? !1, t = A.onshoreOnly ?? !1;
+function S(I, A) {
+  const e = A.area?.trim().toLowerCase(), U = A.bboxPaddingDeg ?? 0.1, r = A.includeDeprecated ?? !1, t = A.includeOtherCelestialBodies ?? !1, n = A.onshoreOnly ?? !1;
   return I.filter((_) => {
-    const n = _.areaName.toLowerCase();
-    return _.type !== b || !_.bboxValid || !r && _.deprecated || e && !n.includes(e) || t && (!n.includes("onshore") || n.includes("onshore and offshore")) ? !1 : J(Z({
+    const s = _.areaName.toLowerCase();
+    return _.type !== L || !_.bboxValid || !r && _.deprecated || !t && w(_) !== void 0 || e && !s.includes(e) || n && (!s.includes("onshore") || s.includes("onshore and offshore")) ? !1 : H(V({
       west: _.westLonDegree,
       south: _.southLatDegree,
       east: _.eastLonDegree,
@@ -1439,10 +1445,10 @@ function l(I, A) {
     }, U), A.extent);
   });
 }
-async function T0(I = {}) {
-  await g(I);
+async function S0(I = {}) {
+  await m(I);
 }
-function X(I) {
+function q(I) {
   const A = I.match(/^data:.*?(;base64)?,(.*)$/);
   if (!A)
     throw new Error(`Unsupported data URL for custom projection resource: ${I}`);
@@ -1454,10 +1460,10 @@ function X(I) {
   }
   return decodeURIComponent(A[2]);
 }
-async function k(I) {
+async function I0(I) {
   const A = typeof I == "string" ? new URL(I, import.meta.url) : I, e = A.href;
   if (e.startsWith("data:"))
-    return X(e);
+    return q(e);
   if (!e.startsWith("file:") && typeof fetch == "function") {
     const t = await fetch(A);
     if (!t.ok)
@@ -1470,75 +1476,78 @@ async function k(I) {
   );
   return r(A, "utf8");
 }
-async function L(I) {
-  const A = await k(I), e = JSON.parse(A);
+async function P(I) {
+  const A = await I0(I), e = JSON.parse(A);
   return Array.isArray(e) ? e : e.projections;
 }
-async function $() {
-  return M || (M = L(D)), M;
+async function A0() {
+  return M || (M = P(z)), M;
 }
-async function M0(I) {
-  await g(I);
-  const A = await d(), e = await V(A), U = l(e, I), r = /* @__PURE__ */ new Map(), t = [], _ = U.filter((o) => {
-    const s = `${o.authName}:${o.code}`, c = y.get(s);
-    return c === void 0 ? !0 : (t.push({ id: s, name: o.name, reason: c }), !1);
+async function g0(I) {
+  await m(I);
+  const A = await C(), e = await k(A), U = S(e, { ...I, includeOtherCelestialBodies: !0 }), r = I.includeOtherCelestialBodies ?? !1, t = /* @__PURE__ */ new Map(), n = [], _ = U.filter((o) => {
+    const a = `${o.authName}:${o.code}`, N = w(o);
+    if (!r && N !== void 0)
+      return n.push({ id: a, name: o.name, reason: `Not on the Earth (celestial body: ${N})` }), !1;
+    const G = B.get(a);
+    return G === void 0 ? !0 : (n.push({ id: a, name: o.name, reason: G }), !1);
   });
-  I.onExcluded?.(t);
-  const n = await Promise.all(_.map((o) => H(o)));
-  for (const o of n)
-    r.set(o.id, o);
+  I.onExcluded?.(n);
+  const s = await Promise.all(_.map((o) => X(o)));
+  for (const o of s)
+    t.set(o.id, o);
   if (I.includeCustomProjections) {
-    const o = await $();
-    for (const s of o) {
-      const c = h(s);
-      if (!l([c], I).length) continue;
-      const G = f(s, "custom");
-      r.set(G.id, G);
+    const o = await A0();
+    for (const a of o) {
+      const N = f(a);
+      if (!S([N], I).length) continue;
+      const G = p(a, "custom");
+      t.set(G.id, G);
     }
   }
-  const a = I.userProjection ?? I.userProjectionFile;
-  if (a) {
-    const o = await L(a);
-    for (const s of o) {
-      const c = h(s);
-      if (!l([c], I).length) continue;
-      const G = f(s, "user");
-      r.set(G.id, G);
+  const i = I.userProjection ?? I.userProjectionFile;
+  if (i) {
+    const o = await P(i);
+    for (const a of o) {
+      const N = f(a);
+      if (!S([N], I).length) continue;
+      const G = p(a, "user");
+      t.set(G.id, G);
     }
   }
-  const i = [...r.values()];
-  return i.sort((o, s) => o.id.localeCompare(s.id)), i;
+  const c = [...t.values()];
+  return c.sort((o, a) => o.id.localeCompare(a.id)), c;
 }
-const u = /* @__PURE__ */ new Map();
-function q(I, A) {
-  let e = u.get(A);
+const d = /* @__PURE__ */ new Map();
+function e0(I, A) {
+  let e = d.get(A);
   if (e === void 0) {
-    const U = t0(I, A);
-    e = U, u.set(A, U), U.catch(() => {
-      u.get(A) === U && u.delete(A);
+    const U = o0(I, A);
+    e = U, d.set(A, U), U.catch(() => {
+      d.get(A) === U && d.delete(A);
     });
   }
   return e;
 }
-const I0 = /^osgeo::proj::io::(?:ParsingException|NoSuchAuthorityCodeException)\b/;
-function A0(I) {
-  return I instanceof Error && I0.test(I.stack ?? "");
+const U0 = /^osgeo::proj::io::(?:ParsingException|NoSuchAuthorityCodeException)\b/;
+function t0(I) {
+  return I instanceof Error && U0.test(I.stack ?? "");
 }
-const e0 = /^osgeo::proj::util::UnsupportedOperationException\b/;
-function U0(I) {
-  return I instanceof Error && e0.test(I.stack ?? "");
+const r0 = /^osgeo::proj::util::UnsupportedOperationException\b/;
+function _0(I) {
+  return I instanceof Error && r0.test(I.stack ?? "");
 }
-const p = /* @__PURE__ */ new Set();
-async function t0(I, A) {
+const E = /* @__PURE__ */ new Set();
+async function o0(I, A) {
   try {
-    return await r0(I, A);
+    return await n0(I, A);
   } catch (e) {
-    if (A0(e)) return !1;
+    if (t0(e)) return !1;
     throw e;
   }
 }
-async function r0(I, A) {
-  return S(I, () => I.projCreate({ definition: A }), async (e) => e == null || !await I.projIsCrs({ obj: e }) ? !1 : S(I, () => I.projCrsGetCoordinateSystem({ crs: e }), async (U) => {
+async function n0(I, A) {
+  return g(I, () => I.projCreate({ definition: A }), async (e) => e == null || !await I.projIsCrs({ obj: e }) ? !1 : g(I, () => I.projCrsGetCoordinateSystem({ crs: e }), async (U) => {
     if (U == null || await I.projCsGetAxisCount({ cs: U }) !== 2) return !1;
     const r = [
       await I.projCsGetAxisInfo({ cs: U, index: 0 }),
@@ -1547,60 +1556,60 @@ async function r0(I, A) {
     return r[0]?.direction !== "east" || r[1]?.direction !== "north" ? !1 : r.every((t) => t.unitConvFactor === 1 && t.unitName === "metre");
   }));
 }
-const _0 = 4096, o0 = new O(_0);
-async function n0(I, A, e) {
+const s0 = 4096, a0 = new W(s0);
+async function i0(I, A, e) {
   if (A.length === 0) return null;
   for (const t of A)
     if (!Number.isFinite(t[0]) || !Number.isFinite(t[1])) return null;
-  await g(e);
-  const U = await d();
-  return !await q(U, I.proj4) || p.has(I.proj4) ? null : await o0.use(U, I.proj4, () => U.projCreateCrsToCrs({
-    source_crs: v,
+  await m(e);
+  const U = await C();
+  return !await e0(U, I.proj4) || E.has(I.proj4) ? null : await a0.use(U, I.proj4, () => U.projCreateCrsToCrs({
+    source_crs: x,
     target_crs: I.proj4
   }), async (t) => {
-    const _ = await U.coordArray(A.length);
+    const n = await U.coordArray(A.length);
     await U.setCoords(
-      _,
-      A.map(([a, i]) => [a, i, 0, 0])
+      n,
+      A.map(([s, i]) => [s, i, 0, 0])
     ), await U.projTransArray({
       p: t,
       direction: U.PJ_FWD,
       n: A.length,
-      coord: _
+      coord: n
     });
-    const n = [];
-    for (let a = 0; a < A.length; a += 1) {
-      const i = await U.getCoords(_, a), o = i?.[0], s = i?.[1];
-      if (!Number.isFinite(o) || !Number.isFinite(s)) return null;
-      n.push([o, s]);
+    const _ = [];
+    for (let s = 0; s < A.length; s += 1) {
+      const i = await U.getCoords(n, s), c = i?.[0], o = i?.[1];
+      if (!Number.isFinite(c) || !Number.isFinite(o)) return null;
+      _.push([c, o]);
     }
-    return n;
+    return _;
   }).catch((t) => {
-    if (!U0(t)) throw t;
-    return p.add(I.proj4), null;
+    if (!_0(t)) throw t;
+    return E.add(I.proj4), null;
   });
 }
-function l0(I, A) {
+function m0(I, A) {
   const e = new Map(I.map((U) => [U.id, { id: U.id, proj4: U.proj4 }]));
   return async (U, r, t) => {
     if (t.kind !== "lonlat_deg" || t.axisOrder !== "lon-lat") return null;
-    const _ = e.get(U);
-    return _ === void 0 ? null : n0(_, r, A);
+    const n = e.get(U);
+    return n === void 0 ? null : i0(n, r, A);
   };
 }
 export {
-  C0 as bboxToPolygonWkt,
-  l0 as createCandidateTransformer,
-  N0 as extractAuthorityIdFromWkt,
-  F0 as extractWktName,
-  d0 as inferApproximateBbox,
-  a0 as inferDatumFamily,
-  i0 as inferKind,
-  u0 as inferPriority,
-  G0 as inferWgsEquivalent,
-  T0 as initializeProjWasmRuntime,
-  s0 as isProjectedPrjPath,
-  c0 as isScopeIncluded,
-  M0 as listProjectedCrsFromProjWasm,
-  n0 as transformLonLatArrayToProjected
+  M0 as bboxToPolygonWkt,
+  m0 as createCandidateTransformer,
+  d0 as extractAuthorityIdFromWkt,
+  C0 as extractWktName,
+  T0 as inferApproximateBbox,
+  G0 as inferDatumFamily,
+  N0 as inferKind,
+  l0 as inferPriority,
+  F0 as inferWgsEquivalent,
+  S0 as initializeProjWasmRuntime,
+  c0 as isProjectedPrjPath,
+  u0 as isScopeIncluded,
+  g0 as listProjectedCrsFromProjWasm,
+  i0 as transformLonLatArrayToProjected
 };

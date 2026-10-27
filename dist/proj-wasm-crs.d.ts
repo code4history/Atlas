@@ -24,6 +24,17 @@ export interface ListProjectedCrsFromProjWasmOptions {
     extent: CandidateCrsExtent;
     area?: string;
     includeDeprecated?: boolean;
+    /**
+     * Keep proj.db rows whose CRS is defined on another celestial body (the Moon, Mars, ... :
+     * most of the IAU_2015 authority and a few ESRI rows). Default `false`.
+     *
+     * They are left out by default because the source of every transformation is WGS 84 (the Earth):
+     * PROJ has no operation from the Earth to them, and with the bundled proj-wasm runtime the
+     * exceptions this raises pile up until the runtime stops answering. The test uses the celestial
+     * body proj.db gives for the CRS (`ellipsoid.celestial_body_auth_name/code` -> `celestial_body.name`,
+     * reported as `celestialBodyName`), so no PROJ object is created for the rows left out.
+     */
+    includeOtherCelestialBodies?: boolean;
     onshoreOnly?: boolean;
     bboxPaddingDeg?: number;
     includeCustomProjections?: boolean;
@@ -32,8 +43,10 @@ export interface ListProjectedCrsFromProjWasmOptions {
     userProjectionFile?: string;
     projWasmAssetBaseUrl?: string | URL;
     /**
-     * Called once per search with the proj.db rows that matched the search but were left out
-     * because their PROJ string cannot be exported by the bundled proj-wasm runtime.
+     * Called once per search with the proj.db rows that matched the search but were left out:
+     * rows of another celestial body (reason `Not on the Earth (celestial body: <name>)`, unless
+     * `includeOtherCelestialBodies` is set) and rows whose PROJ string cannot be exported by the
+     * bundled proj-wasm runtime (reason `Unsupported conversion method: ...`).
      */
     onExcluded?: (excluded: ProjectedCrsExclusion[]) => void;
 }
@@ -55,6 +68,11 @@ export interface ProjDatabaseRow {
     eastLonDegree: number;
     northLatDegree: number;
     areaName: string;
+    /**
+     * Name of the celestial body of the CRS (from proj.db: ellipsoid -> celestial_body), e.g. `Earth`, `Moon`.
+     * A row without it (a synthetic row of a custom projection) is treated as on the Earth.
+     */
+    celestialBodyName?: string | null;
 }
 export interface CustomProjectionDefinition {
     authority: string;

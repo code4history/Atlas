@@ -29,6 +29,17 @@ export interface ListProjectedCrsFromProjWasmOptions {
   extent: CandidateCrsExtent;
   area?: string;
   includeDeprecated?: boolean;
+  /**
+   * Keep proj.db rows whose CRS is defined on another celestial body (the Moon, Mars, ... :
+   * most of the IAU_2015 authority and a few ESRI rows). Default `false`.
+   *
+   * They are left out by default because the source of every transformation is WGS 84 (the Earth):
+   * PROJ has no operation from the Earth to them, and with the bundled proj-wasm runtime the
+   * exceptions this raises pile up until the runtime stops answering. The test uses the celestial
+   * body proj.db gives for the CRS (`ellipsoid.celestial_body_auth_name/code` -> `celestial_body.name`,
+   * reported as `celestialBodyName`), so no PROJ object is created for the rows left out.
+   */
+  includeOtherCelestialBodies?: boolean;
   onshoreOnly?: boolean;
   bboxPaddingDeg?: number;
   includeCustomProjections?: boolean;
@@ -37,8 +48,10 @@ export interface ListProjectedCrsFromProjWasmOptions {
   userProjectionFile?: string;
   projWasmAssetBaseUrl?: string | URL;
   /**
-   * Called once per search with the proj.db rows that matched the search but were left out
-   * because their PROJ string cannot be exported by the bundled proj-wasm runtime.
+   * Called once per search with the proj.db rows that matched the search but were left out:
+   * rows of another celestial body (reason `Not on the Earth (celestial body: <name>)`, unless
+   * `includeOtherCelestialBodies` is set) and rows whose PROJ string cannot be exported by the
+   * bundled proj-wasm runtime (reason `Unsupported conversion method: ...`).
    */
   onExcluded?: (excluded: ProjectedCrsExclusion[]) => void;
 }
@@ -63,6 +76,11 @@ export interface ProjDatabaseRow {
   eastLonDegree: number;
   northLatDegree: number;
   areaName: string;
+  /**
+   * Name of the celestial body of the CRS (from proj.db: ellipsoid -> celestial_body), e.g. `Earth`, `Moon`.
+   * A row without it (a synthetic row of a custom projection) is treated as on the Earth.
+   */
+  celestialBodyName?: string | null;
 }
 
 export interface CustomProjectionDefinition {
@@ -84,6 +102,14 @@ interface CustomProjectionFile {
 }
 
 const PJ_TYPE_PROJECTED_CRS = 15;
+/** `celestial_body.name` of the Earth in proj.db (PROJ's `Ellipsoid::EARTH`). */
+const EARTH_CELESTIAL_BODY_NAME = "Earth";
+
+function otherCelestialBodyName(row: ProjDatabaseRow): string | undefined {
+  const name = row.celestialBodyName;
+  if (typeof name !== "string" || name.length === 0) return undefined;
+  return name === EARTH_CELESTIAL_BODY_NAME ? undefined : name;
+}
 
 /**
  * proj-wasm の実行時で書き出すと例外になる行（`scripts/generate-proj-wasm-exclusions.mjs` で実測）。
@@ -114,7 +140,7 @@ let projWasmAssetResolverInstalled = false;
  *
  * proj-wasm 0.1.0-alpha8 では、PROJ object を `proj_destroy` で解放しても取り戻せない資源が
  * 作成のたびに残り、約 22 万回で wasm のメモリ上限（2 GiB）に当たって以後の検索が
- * `SQLite error [ out of memory ]` で落ちる。`area` なしの検索は 1 回で約 2,200 行を展開するので、
+ * `SQLite error [ out of memory ]` で落ちる。`area` なしの検索は 1 回で数百〜約 2,200 行（地球以外の天体を含めたとき）を展開するので、
  * 毎回作り直すと約 100 回の検索で落ちる。展開結果は proj.db と proj-wasm の版で決まる
  * （同じ process の中では変わらない）ので、同じ行の PJ は 1 回しか作らない。
  * 作成の回数は proj.db の投影 CRS の行数（8,820）で頭打ちになる。
@@ -362,6 +388,7 @@ export function filterProjectedCrsRows(
   const areaQuery = options.area?.trim().toLowerCase();
   const bboxPaddingDeg = options.bboxPaddingDeg ?? 0.1;
   const includeDeprecated = options.includeDeprecated ?? false;
+  const includeOtherCelestialBodies = options.includeOtherCelestialBodies ?? false;
   const onshoreOnly = options.onshoreOnly ?? false;
 
   return rows.filter((row) => {
@@ -370,6 +397,7 @@ export function filterProjectedCrsRows(
     if (row.type !== PJ_TYPE_PROJECTED_CRS) return false;
     if (!row.bboxValid) return false;
     if (!includeDeprecated && row.deprecated) return false;
+    if (!includeOtherCelestialBodies && otherCelestialBodyName(row) !== undefined) return false;
     if (areaQuery && !normalizedAreaName.includes(areaQuery)) return false;
     if (onshoreOnly && (!normalizedAreaName.includes("onshore") || normalizedAreaName.includes("onshore and offshore"))) {
       return false;
@@ -452,12 +480,18 @@ export async function listProjectedCrsFromProjWasm(
   const proj = await loadProjWasm();
 
   const rows = await listProjDatabaseRows(proj);
-  const filtered = filterProjectedCrsRows(rows, options);
+  const matched = filterProjectedCrsRows(rows, { ...options, includeOtherCelestialBodies: true });
+  const includeOtherCelestialBodies = options.includeOtherCelestialBodies ?? false;
   const resultMap = new Map<string, ProjectedCrsInfo>();
 
   const excluded: ProjectedCrsExclusion[] = [];
-  const expandable = filtered.filter((row) => {
+  const expandable = matched.filter((row) => {
     const id = `${row.authName}:${row.code}`;
+    const bodyName = otherCelestialBodyName(row);
+    if (!includeOtherCelestialBodies && bodyName !== undefined) {
+      excluded.push({ id, name: row.name, reason: `Not on the Earth (celestial body: ${bodyName})` });
+      return false;
+    }
     const reason = PROJ4_UNAVAILABLE_REASONS.get(id);
     if (reason === undefined) return true;
     excluded.push({ id, name: row.name, reason });
@@ -606,7 +640,7 @@ async function checkEastNorthMetreCrs(
 /**
  * 変換の pipeline（lon/lat → target）の PJ を target の定義の文字列ごとに保持して使い回す。
  * source は常に `LONLAT_WGS84_PROJ_STRING` なので、target の文字列だけで決まる。
- * 上限は `area` なしの検索が返す行の数（約 2,200）を余裕をもって覆う数にしてある。
+ * 上限は `area` なしの検索が返しうる行の数（地球以外の天体を含めて約 2,200）を余裕をもって覆う数にしてある。
  * 上限を越えると最も古い PJ を解放する（作り直すと解放しても戻らない資源をまた使うので、
  * 普段の使い方では追い出しが起きない大きさにする）。
  */
