@@ -71,8 +71,12 @@ console.log(projected); // [[easting, northing], [easting, northing]] or null
 
 `null` means "not transformable as a business outcome". It is returned for an empty input,
 for a non-finite input or output component (no partial success), and for a target whose
-definition is not a CRS, whose axes are not east/north, or whose units are not metres
-(units are never converted). Exceptions are reserved for implementation bugs.
+definition PROJ cannot read, is not a CRS, has axes that are not east/north, has units that are
+not metres (units are never converted), or cannot be reached from lon/lat on the Earth (for
+example a CRS of the Moon). `null` is used for nothing else: when the
+transformation fails on the implementation side (a PROJ object cannot be created, or a proj-wasm
+call fails, for example because the wasm memory is full), the function throws, so such a failure is
+never mistaken for an untransformable target.
 The function accepts lon/lat degree input only.
 
 ### Using Atlas with Teiresias
@@ -82,8 +86,8 @@ the `CandidateTransformer` of [`@c4h/teiresias`](https://github.com/code4history
 candidates found by Atlas can be ranked by `estimateCrs`. Atlas does not depend on Teiresias; the
 types match by shape. The transformer returns `null` for a geo basis other than
 `{ kind: "lonlat_deg", axisOrder: "lon-lat" }` and for an id that is not among the rows; otherwise it
-returns what `transformLonLatArrayToProjected` returns. The rows are copied when the transformer is
-created.
+returns what `transformLonLatArrayToProjected` returns, and throws what it throws. The rows are copied
+when the transformer is created.
 
 ```ts
 import { createCandidateTransformer, listProjectedCrsFromProjWasm } from "@c4h/atlas";
@@ -124,11 +128,18 @@ by later searches.
 ### Known limit of proj-wasm 0.1.0-alpha8
 
 proj-wasm 0.1.0-alpha8 does not get back all memory when a PROJ object is released, and the wasm
-memory is capped at 2 GiB. Searches reuse their PROJ objects, so they are not affected (4,000
-searches in one process were measured). `transformLonLatArrayToProjected` (and the transformer from
-`createCandidateTransformer`) still builds one PROJ object per call: about 200,000 calls in one
-process (199,698 measured) fill the memory, after which calls return `null`. Start a new process
-(or reload the page) before that.
+memory is capped at 2 GiB: about 200,000 objects created in one process fill it. Atlas therefore
+keeps its PROJ objects instead of creating them again:
+
+- Searches reuse the expanded rows (4,000 searches in one process were measured).
+- `transformLonLatArrayToProjected` (and the transformer from `createCandidateTransformer`) keeps one
+  transformation per target CRS, for up to 4,096 targets; beyond that the least recently used one is
+  released. Repeated calls therefore do not use up the memory (210,000 calls in one process were
+  measured).
+
+Only a process that keeps cycling through more than 4,096 different targets creates objects again.
+If the memory does run out, the calls throw instead of returning `null`; start a new process (or
+reload the page) then.
 
 ## Development
 
