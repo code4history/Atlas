@@ -278,6 +278,7 @@ in [CHANGELOG.md](./CHANGELOG.md).
 
 - Root portal: `index.html`
 - Demo app: `demo/crs-candidate-lookup.html`
+- Benchmark demo: `demo/benchmark.html` (proj-wasm against proj4js on the same points and CRSs: elapsed time, success and failure counts, round-trip error, the difference of the two engines' forward output, and the message behind every failure; bundled Japan place data with its sources in `demo/data/benchmark-places.provenance.json`)
 - GitHub Pages target: `https://code4history.github.io/Atlas/`
 
 The demo page has three preset contrasts. Each contrast has an A and a B button:

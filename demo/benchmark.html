@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlas Benchmark Demo</title>
+  <link rel="stylesheet" href="./demo-shell.css">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./benchmark.css">
+</head>
+<body class="c4h-app">
+  <header class="c4h-header">
+    <a class="c4h-back-link" href="../index.html">← デモ一覧</a>
+    <h1>Atlas - Browser Benchmark Demo</h1>
+    <div class="c4h-control-row atlas-benchmark-controls">
+      <label>
+        データの分類:
+        <select id="category">
+          <option value="mountain-summit" selected>山の山頂</option>
+          <option value="extreme-point">東西南北の端点</option>
+          <option value="all">すべて</option>
+        </select>
+      </label>
+      <label>
+        地点数の上限:
+        <select id="point-limit">
+          <option value="10">10</option>
+          <option value="50" selected>50</option>
+          <option value="200">200</option>
+          <option value="all">すべて</option>
+        </select>
+      </label>
+      <label>
+        繰り返し回数（作業量）:
+        <input id="work-count" type="number" min="1" step="1" value="100">
+      </label>
+      <div class="c4h-divider"></div>
+      <label>
+        CRS の範囲:
+        <select id="crs-scope">
+          <option value="all" selected>すべて</option>
+          <option value="group">群を 1 つ</option>
+          <option value="crs">CRS を 1 つ</option>
+        </select>
+      </label>
+      <label>
+        群:
+        <select id="crs-group"></select>
+      </label>
+      <label>
+        CRS:
+        <select id="crs-id"></select>
+      </label>
+      <div class="c4h-divider"></div>
+      <button id="run-button" class="c4h-header-btn" type="button" disabled>実行</button>
+      <button id="reset-button" class="c4h-header-btn c4h-danger-btn" type="button">リセット</button>
+    </div>
+    <span id="init-status" class="c4h-status">初期化中...</span>
+  </header>
+
+  <section class="atlas-presets" aria-label="Presets">
+    <div id="preset-bar" class="atlas-preset-bar"></div>
+    <p class="atlas-expectation"><strong>見え方:</strong> <span id="preset-expectation"></span></p>
+  </section>
+
+  <div class="c4h-instructions">
+    操作: 入力（分類・地点数の上限・作業量・CRS の範囲）を決めて「実行」を押します。同じ点列と同じ CRS で
+    proj-wasm と proj4js を往復（順方向 → 逆方向）させ、時間・成功／失敗・往復誤差・2 つのエンジンの順方向の差を表に出します。
+    作業量が地点数より多いときは先頭へ戻って繰り返します。地図は使いません。
+  </div>
+
+  <section class="c4h-card atlas-benchmark-summary">
+    <header class="atlas-card-header">
+      <h2>結果の要約</h2>
+    </header>
+    <p id="result-summary" class="atlas-result-summary">まだ実行していません。</p>
+    <p class="atlas-benchmark-line">
+      順方向の差（両エンジンが成功した点だけの最大、m）: <strong id="forward-diff">-</strong>
+    </p>
+  </section>
+
+  <section class="c4h-card">
+    <header class="atlas-card-header">
+      <h2>CRS ごとの結果</h2>
+      <p id="row-count"></p>
+    </header>
+    <div class="atlas-table-scroll">
+      <table class="atlas-benchmark-table">
+        <thead>
+          <tr>
+            <th rowspan="2">CRS</th>
+            <th rowspan="2">名前</th>
+            <th rowspan="2">作業量</th>
+            <th colspan="5">proj-wasm</th>
+            <th colspan="5">proj4js</th>
+            <th rowspan="2">順方向の差 (m)</th>
+            <th rowspan="2">状態</th>
+          </tr>
+          <tr>
+            <th>総時間 (ms)</th>
+            <th>成功</th>
+            <th>失敗</th>
+            <th>往復誤差 平均 (m)</th>
+            <th>往復誤差 最大 (m)</th>
+            <th>総時間 (ms)</th>
+            <th>成功</th>
+            <th>失敗</th>
+            <th>往復誤差 平均 (m)</th>
+            <th>往復誤差 最大 (m)</th>
+          </tr>
+        </thead>
+        <tbody id="results-body">
+          <tr><td colspan="15" class="empty">まだ実行していません。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="c4h-card">
+    <header class="atlas-card-header">
+      <h2>失敗の詳細</h2>
+    </header>
+    <div id="failure-details" class="atlas-detail-body">
+      <p class="empty">まだ失敗はありません。</p>
+    </div>
+  </section>
+
+  <section class="c4h-card">
+    <header class="atlas-card-header">
+      <h2>出典</h2>
+    </header>
+    <div id="provenance" class="atlas-detail-body"></div>
+  </section>
+
+  <footer class="c4h-portal-footer" id="version"></footer>
+
+  <script type="module">
+    import { initBenchmark } from "./benchmark.js";
+    initBenchmark();
+  </script>
+</body>
+</html>

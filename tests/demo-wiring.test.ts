@@ -17,7 +17,13 @@ import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { initDemo } from "../demo/main.js";
-import { PRESETS, buildLookupOptions } from "../demo/presets.js";
+import {
+  AREA_BY_MODE,
+  NEUTRAL_EXPECTATION,
+  PRESETS,
+  buildLookupOptions,
+  findPreset,
+} from "../demo/presets.js";
 import { version as packageVersion } from "../package.json";
 
 const testsDir = dirname(fileURLToPath(import.meta.url));
@@ -126,6 +132,47 @@ describe("demo wiring: preset buttons", () => {
       expect(text("preset-expectation")).toBe(option.expectation);
     });
   }
+
+  it("goes back to neutral when a control is changed by hand", async () => {
+    const { runtime, listProjectedCrsFromProjWasm } = makeRuntime();
+    const demo = await start(runtime);
+
+    clickPreset("place", "a");
+    await demo.whenSettled();
+    expect(pressedButtons()).toEqual(["place:a"]);
+    expect(text("preset-expectation")).toBe(findPreset("place", "a")?.expectation);
+    expect(listProjectedCrsFromProjWasm).toHaveBeenCalledTimes(1);
+
+    const custom = document.getElementById("custom-enabled") as HTMLInputElement;
+    custom.checked = false;
+    custom.dispatchEvent(new Event("change", { bubbles: true }));
+    await demo.whenSettled();
+
+    expect(pressedButtons()).toEqual([]);
+    expect(text("preset-expectation")).toBe(NEUTRAL_EXPECTATION);
+    expect(listProjectedCrsFromProjWasm).toHaveBeenCalledTimes(2);
+    const options = listProjectedCrsFromProjWasm.mock.calls[1][0] as { includeCustomProjections?: boolean };
+    expect(options.includeCustomProjections).toBe(false);
+  });
+
+  it("uses the area names of AREA_BY_MODE for the area select and for the derived area", async () => {
+    const { runtime, listProjectedCrsFromProjWasm } = makeRuntime();
+    const demo = await start(runtime);
+
+    // A marker inside Japan, then the `auto` area: the demo must derive "Japan" itself.
+    const canvas = document.getElementById("map-canvas") as HTMLCanvasElement;
+    canvas.dispatchEvent(new MouseEvent("pointerdown", { clientX: 360, clientY: 230, bubbles: true }));
+    canvas.dispatchEvent(new MouseEvent("pointerup", { clientX: 360, clientY: 230, bubbles: true }));
+    await demo.whenSettled();
+
+    const areaMode = document.getElementById("area-mode") as HTMLSelectElement;
+    areaMode.value = "auto";
+    areaMode.dispatchEvent(new Event("change", { bubbles: true }));
+    await demo.whenSettled();
+
+    const options = listProjectedCrsFromProjWasm.mock.calls.at(-1)?.[0] as { area?: string };
+    expect(options.area).toBe(AREA_BY_MODE.japan);
+  });
 
   it("goes back to area: 'Japan' after pressing the no-filter button", async () => {
     const { runtime, listProjectedCrsFromProjWasm } = makeRuntime();

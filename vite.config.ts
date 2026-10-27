@@ -158,6 +158,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, "index.html"),
           crsCandidateLookup: resolve(__dirname, "demo/crs-candidate-lookup.html"),
+          benchmark: resolve(__dirname, "demo/benchmark.html"),
         },
       },
     },

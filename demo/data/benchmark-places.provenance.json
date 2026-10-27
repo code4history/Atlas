@@ -1,0 +1,58 @@
+{
+  "title": "benchmark-places.json の出典と加工の記録",
+  "summary": "このファイルは国土地理院が作成したものではない。国土地理院ウェブサイトで公開されている2つのデータから地点を選び、加工して Atlas のデモ用に Atlas プロジェクトが作成したものである。",
+  "retrievedAt": "2026-10-27",
+  "attribution": "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/kihonjohochousa/kihonjohochousa41139.html、https://www.gsi.go.jp/KOKUJYOHO/center.htm）",
+  "processedNotice": "「日本の主な山岳標高一覧（１００３山）」および「日本の東西南北端点の経度緯度」（国土地理院ウェブサイト）を加工して Atlas プロジェクトが作成",
+  "sources": [
+    {
+      "category": "mountain-summit",
+      "name": "日本の主な山岳標高一覧（１００３山）",
+      "version": "2026年3月31日版",
+      "publisher": "国土地理院",
+      "pageUrl": "https://www.gsi.go.jp/kihonjohochousa/kihonjohochousa41139.html",
+      "fileUrl": "https://www.gsi.go.jp/KOKUJYOHO/MOUNTAIN/1003zan20260331.csv",
+      "fileFormat": "CSV（文字コードは Shift_JIS（CP932））",
+      "retrievedAt": "2026-10-27",
+      "license": {
+        "name": "国土地理院コンテンツ利用規約（令和7年11月20日改正）",
+        "terms": "公共データ利用規約（第1.0版。PDL1.0。CC BY 4.0 互換）",
+        "url": "https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html"
+      },
+      "attribution": "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/kihonjohochousa/kihonjohochousa41139.html）",
+      "processing": [
+        "CSV の全行を読み、列「連番」「山名＜山頂名＞」「緯度」「経度」だけを選んで JSON の配列にした（標高・種別・都道府県・よみは取り込んでいない）。",
+        "「連番」を sourceId として残した。",
+        "緯度・経度は CSV の値（世界測地系の 10 進の度）をそのまま数値として使った。丸め直しはしていない。",
+        "category は元データに無い項目で、このファイルで新しく付けた値 \"mountain-summit\" である。",
+        "元データは 1,003 山だが、複数の山頂を持つ山は山頂ごとに行があるため、このファイルの地点は 1,059 件になる。"
+      ]
+    },
+    {
+      "category": "extreme-point",
+      "name": "日本の東西南北端点の経度緯度",
+      "version": "令和元年6月1日に最東端・最西端の数値を更新した版",
+      "publisher": "国土地理院",
+      "pageUrl": "https://www.gsi.go.jp/KOKUJYOHO/center.htm",
+      "retrievedAt": "2026-10-27",
+      "license": {
+        "name": "国土地理院コンテンツ利用規約（令和7年11月20日改正）",
+        "terms": "公共データ利用規約（第1.0版。PDL1.0。CC BY 4.0 互換）",
+        "url": "https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html"
+      },
+      "attribution": "出典：国土地理院ウェブサイト（https://www.gsi.go.jp/KOKUJYOHO/center.htm）",
+      "processing": [
+        "ページの一覧から4点（最東端・最西端・最南端・最北端）を選んだ。",
+        "経度・緯度は度分秒（秒単位）で示されているため、10 進の度に直した（度 + 分 ÷ 60 + 秒 ÷ 3600）。例: 153°59′12″ → 153.986667。",
+        "10 進に直した値は小数第 6 位に丸めた。",
+        "name は区分と場所（例: 最東端（東京都 南鳥島））、sourceId は区分（east・west・south・north）、sourceUrl はページの URL とした。",
+        "category はこのファイルで新しく付けた値 \"extreme-point\" である。",
+        "ページは、値が2万5千分1地形図をもとに秒単位で求められたもので、1秒程度の誤差があり得るとしており、現地の厳密な位置を示すものではない。"
+      ]
+    }
+  ],
+  "verification": [
+    "地点の緯度・経度がすべて日本の範囲（東経 122〜154 度、北緯 20〜46 度）にあること、名前が空でなく category が既知の値であることは、データのテスト（tests/benchmark-places.test.ts）で確かめている。",
+    "地点の総数は 1,063 件（山頂 1,059 件、端点 4 件）。"
+  ]
+}

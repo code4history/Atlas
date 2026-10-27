@@ -36,6 +36,7 @@ export interface LookupOptions {
 }
 
 export const AREA_BY_MODE: Readonly<Record<string, string>>;
+export const NEUTRAL_EXPECTATION: string;
 export const PRESETS: readonly PresetContrast[];
 export function findPreset(presetId: string, optionId: string): PresetOption | undefined;
 export function buildLookupOptions(input: PresetInput, options?: { autoArea?: string }): LookupOptions;
