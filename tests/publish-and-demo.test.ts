@@ -26,7 +26,10 @@ describe("publish and demo packaging", () => {
     expect(packageJson.repository?.url).toMatch(/github\.com/);
     expect(packageJson.files).toContain("README.ja.md");
     expect(packageJson.dependencies?.["proj-wasm"]).toBeDefined();
-    expect(packageJson.devDependencies?.proj4).toBeUndefined();
+    // proj4js is only a benchmark comparison engine, never a runtime dependency of the package.
+    expect(packageJson.devDependencies?.proj4).toBe("2.22.0");
+    expect(packageJson.dependencies?.proj4).toBeUndefined();
+    expect(packageJson.devDependencies?.jsdom).toMatch(/^\^30\./);
     expect(packageJson.devDependencies?.["coi-serviceworker"]).toBeUndefined();
   });
 
@@ -56,7 +59,7 @@ describe("publish and demo packaging", () => {
     expect(mainJs).toContain("projWasmAssetBaseUrl");
     expect(mainJs).toContain('new URL("assets/", pageRoot)');
 
-    // m3-t3/AC-7: 日付変更線跨ぎ bbox の是正（HR-m3-011）が demo/main.js から実際に呼ばれていること。
+    // 日付変更線跨ぎ bbox の是正が demo/main.js から実際に呼ばれていること。
     // 純関数側の算術は tests/demo-map-geometry.test.ts が検査する ∴ ここは「結線」だけを固定する。
     expect(mainJs).toContain('from "./map-geometry.ts"');
     expect(mainJs).not.toContain("Math.abs(right - left)"); // 巡回性を持たない旧算術
@@ -71,7 +74,8 @@ describe("publish and demo packaging", () => {
     expect(portal).toContain('class="c4h-portal"');
     expect(portal).toContain('class="c4h-demo-card"');
     expect(portal).toContain('href="./demo/crs-candidate-lookup.html"');
-    expect(portal).not.toContain("benchmark.html");
+    expect(portal).toContain('href="./demo/benchmark.html"');
+    expect(portal.match(/class="c4h-demo-card"/g)).toHaveLength(2);
 
     expect(crsSubpage).toContain('class="c4h-app"');
     expect(crsSubpage).toContain('class="c4h-back-link"');
@@ -88,12 +92,12 @@ describe("publish and demo packaging", () => {
     expect(crsSubpage).toContain('id="custom-enabled"');
   });
 
-  it("keeps demo build inputs limited to the portal and CRS subpage", async () => {
+  it("builds the portal, the CRS subpage and the benchmark subpage", async () => {
     const viteConfig = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
     expect(viteConfig).toContain('index: resolve(__dirname, "index.html")');
     expect(viteConfig).toContain('crsCandidateLookup: resolve(__dirname, "demo/crs-candidate-lookup.html")');
+    expect(viteConfig).toContain('benchmark: resolve(__dirname, "demo/benchmark.html")');
     expect(viteConfig).not.toContain("demoIndex");
-    expect(viteConfig).not.toContain("benchmark.html");
   });
 
   it("serves package-distributed runtime assets without isolation headers", async () => {
@@ -118,6 +122,8 @@ describe("publish and demo packaging", () => {
     const deploy = await readFile(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
 
     expect(script).toContain("assets/proj.db");
+    expect(script).toContain("demo/benchmark.html");
+    expect(script).toContain("benchmark-places");
     expect(script).toContain("/Atlas/assets/");
     expect(script).toContain("origin-rooted /assets/");
     expect(script).toContain("unexpectedly small");
@@ -128,20 +134,20 @@ describe("publish and demo packaging", () => {
     expect(ci).toContain("pnpm run verify:demo");
     expect(ci).toContain("pnpm run verify:packed-browser");
     expect(deploy).toContain("pnpm run verify:demo");
-    // m3-t1/K22: 起動ブランチの master 化を機械で固定する（目視 diff に頼らない）。
+    // 起動ブランチの master 化を機械で固定する（目視 diff に頼らない）。
     // Atlas 内で閉じる検査であること自体が要件である — 3 repo を独立公開した後、
     // Teiresias 側から相対パスで Atlas を assert する形は解決不能になるため。
     expect(deploy).toContain("- master");
   });
 
   it("states the actual MIT license in both READMEs", async () => {
-    // m3-t2/K12: package.json の license と LICENSE は MIT だが、README ×2 は
-    // 旧 Maplat 系の制限的ライセンス名（設計 §4.4.4 が実測した表記）を表示していた。
+    // package.json の license と LICENSE は MIT だが、README ×2 は
+    // 旧 Maplat 系の制限的ライセンス名（実測した表記）を表示していた。
     // 公開すると README が実際より制限的なライセンスを主張する ∴ repo 内で閉じる検査で固定する
     // （outer の走査だけに頼ると、分離後の公開リポジトリ単体では 1 本も走らない）。
     //
     // ⚠️ 禁止語をソースへ**逐語で置かない**（連結して組み立てる）。
-    // m3-t2/AC-6 は「3 repo 全域で当該語が 0 件」を走査で固定する ∴ 検査の実装元が自分でヒットすると、
+    // 「3 repo 全域で当該語が 0 件」を走査で固定する ∴ 検査の実装元が自分でヒットすると、
     // 走査は「検査が存在すること」を欠陥として数えてしまう。走査対象からファイルごと除外するより、
     // 実装元だけを走査面から外すこの形の方が、同ファイルの他の行に対する走査を弱めない
     // （nayuta-implementer「検査の除外を足すとき（H-9）」の「実装元は除外し、実装元の側で規律を強制する」）。

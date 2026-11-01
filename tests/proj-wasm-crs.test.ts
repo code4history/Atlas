@@ -8,7 +8,14 @@ import {
   type ProjDatabaseRow,
 } from "../src/proj-wasm-crs.ts";
 
-describe("proj-wasm projected CRS lookup", () => {
+/**
+ * Tests here go through the real proj-wasm engine; the first one in a file also pays for its start-up.
+ * Timeout = twice the longest test measured while Atlas, Daedalus and Teiresias ran their tests at
+ * the same time (4143 ms, rounded up to whole seconds).
+ */
+const PROJ_WASM_TEST_TIMEOUT_MS = 9_000;
+
+describe("proj-wasm projected CRS lookup", { timeout: PROJ_WASM_TEST_TIMEOUT_MS }, () => {
   it("excludes deprecated rows by default in pure filtering", () => {
     const rows: ProjDatabaseRow[] = [
       {

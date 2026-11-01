@@ -1,11 +1,10 @@
 /**
  * デモ地図の座標変換と、日付変更線を跨ぐ bbox の描画幾何。
  *
- * 設計正本: `docs/superpowers/specs/2026-08-29-m3-t3-maplat-v4-crs-libs-task-design.md` §6.1。
  * 本モジュールは **DOM を参照しない / `@c4h/atlas` を参照しない純関数だけ**を置く
  * （`demo/main.js` から結線し、`tests/demo-map-geometry.test.ts` から直接呼んで検査するため）。
  *
- * 本モジュールが解く欠陥（HR-m3-011）: 経度写像 `x = ((lon + 180) / 360) * scale` は
+ * 本モジュールが解く欠陥: 経度写像 `x = ((lon + 180) / 360) * scale` は
  * **巡回性を持たない** ∴ west / east を独立に写して差を取ると、`west > east`（跨ぎ）の bbox で
  * **補集合**が描かれる（EPSG:3832 では正しい幅 193.31° に対し 166.69°。和は 360.00°）。
  */
@@ -85,7 +84,8 @@ export function lonSpanDegrees(west: number, east: number): number {
  *
  * `bleedPx` は図形の実体が左端 x・幅 width の矩形からはみ出す分（マーカーの円やラベル）。
  *
- * 反復回数の上限は設計 §6.3 で導出しており（デモの拘束下で最大 2）、m3-t3/AC-5 (c) が検査する。
+ * 反復回数は、デモの拘束下（zoom 2〜12・幅 720 px・図形の幅が世界の幅以下）で最大 2 になる。
+ * `tests/demo-map-geometry.test.ts` がその上限を検査する。
  */
 export function worldCopyXs(x: number, width: number, view: MapView, bleedPx = 0): number[] {
   const worldWidth = worldSizePx(view.zoom);

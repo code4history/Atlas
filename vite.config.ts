@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import dts from "vite-plugin-dts";
 import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import process from "node:process";
@@ -10,6 +11,7 @@ const isPagesBuild = process.env.GITHUB_PAGES === "true";
 const require = createRequire(import.meta.url);
 const projWasmDist = dirname(require.resolve("proj-wasm"));
 const customProjectionJson = resolve(__dirname, "data/crs/custom-projections.json");
+const packageVersion = (JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf8")) as { version: string }).version;
 
 export const PROJ_WASM_RUNTIME_ASSETS = [
   "proj.db",
@@ -133,6 +135,7 @@ export const shouldExternalize = (id: string) => {
 };
 
 export default defineConfig({
+  define: isPackageBuild ? {} : { __ATLAS_VERSION__: JSON.stringify(packageVersion) },
   base: isPackageBuild ? undefined : isPagesBuild ? "/Atlas/" : "/",
   build: isPackageBuild
     ? {
@@ -155,6 +158,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, "index.html"),
           crsCandidateLookup: resolve(__dirname, "demo/crs-candidate-lookup.html"),
+          benchmark: resolve(__dirname, "demo/benchmark.html"),
         },
       },
     },
@@ -163,11 +167,10 @@ export default defineConfig({
       copyRuntimeAssets(),
       removeTsExtensions(),
       dts({
-        outDir: "dist",
+        outDirs: "dist",
         exclude: ["tests", "node_modules"],
-        rollupTypes: false,
+        bundleTypes: false,
         tsconfigPath: "./tsconfig.json",
-        logLevel: "silent",
         insertTypesEntry: true,
         staticImport: true,
         beforeWriteFile: (filePath, content) => ({
@@ -184,5 +187,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // proj-wasm starts a worker pool per test file; running files at the same time makes the
+    // engine tests compete for memory and hit their timeouts at random.
+    fileParallelism: false,
   },
 });
