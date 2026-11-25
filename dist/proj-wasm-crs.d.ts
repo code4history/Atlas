@@ -52,9 +52,20 @@ export interface ListProjectedCrsFromProjWasmOptions {
     onshoreOnly?: boolean;
     bboxPaddingDeg?: number;
     includeCustomProjections?: boolean;
+    /**
+     * A JSON file of projection definitions to add to the result: a `data:`, `file:` or `https:` URL
+     * (`http:` only for localhost or, in a browser, the page's own origin), at most 8 MiB. Rows that
+     * are not well-formed, and rows whose definition contains a URL, are skipped.
+     *
+     * Pass a fixed value or one you have checked: Atlas reads whatever this names.
+     */
     userProjection?: string | URL;
     /** @deprecated Use userProjection with a file://, https://, or data: URI. */
     userProjectionFile?: string;
+    /**
+     * Where a browser loads the proj-wasm runtime files from (code included). Pass a fixed value,
+     * never one taken from user input. Only the first call that starts the runtime uses it.
+     */
     projWasmAssetBaseUrl?: string | URL;
     /**
      * Called once per search with the proj.db rows that matched the search but were left out:
@@ -65,9 +76,21 @@ export interface ListProjectedCrsFromProjWasmOptions {
     onExcluded?: (excluded: ProjectedCrsExclusion[]) => void;
 }
 export interface InitializeProjWasmRuntimeOptions {
+    /** See `ListProjectedCrsFromProjWasmOptions.projWasmAssetBaseUrl`. */
     projWasmAssetBaseUrl?: string | URL;
+    /**
+     * Let PROJ download the grid files a transformation needs (from `https://cdn.proj.org`).
+     * Default `false`: PROJ sends no request, and a transformation that would use a grid uses the
+     * best one PROJ has without it (for NAD27 / UTM zone 11N at Los Angeles the two differ by 1.5 m).
+     *
+     * The setting holds for the whole process (or page) and is fixed when the runtime starts, so
+     * call `initializeProjWasmRuntime({ enableNetwork: true })` before any other Atlas call. Asking
+     * for a value that differs from the one in effect throws.
+     */
+    enableNetwork?: boolean;
 }
 export interface TransformLonLatToProjectedOptions {
+    /** See `ListProjectedCrsFromProjWasmOptions.projWasmAssetBaseUrl`. */
     projWasmAssetBaseUrl?: string | URL;
 }
 export interface ProjDatabaseRow {

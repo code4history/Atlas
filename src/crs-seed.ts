@@ -101,7 +101,11 @@ export function extractAuthorityIdFromWkt(wkt: string): CandidateAuthorityId | u
 
 export function extractWktName(wkt: string): string {
   const match = wkt.match(/^[A-Z]+CRS\["([^"]+)"/);
-  if (!match) throw new Error(`Unable to extract WKT root name from: ${wkt}`);
+  if (!match) {
+    // Quote only the start of the input: it can be large, and it is the caller's data.
+    const start = wkt.length > 80 ? `${wkt.slice(0, 80)}...` : wkt;
+    throw new Error(`Unable to extract WKT root name from: ${start}`);
+  }
   return match[1];
 }
 
