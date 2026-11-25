@@ -190,6 +190,56 @@ const rows = await listProjectedCrsFromProjWasm({
 Within one process, the proj.db listing and each row's WKT2 and PROJ string are built once and reused
 by later searches.
 
+### Network access and untrusted input
+
+**PROJ and the network.** By default Atlas does not let PROJ use the network: a search or a
+transformation sends no request, and everything is computed from the bundled `proj.db`.
+
+Some transformations are more accurate with a grid file (a datum shift grid). To let PROJ download
+the grids it needs, start the runtime with `enableNetwork: true` before any other Atlas call:
+
+```ts
+import { initializeProjWasmRuntime } from "@c4h/atlas";
+
+await initializeProjWasmRuntime({ enableNetwork: true });
+```
+
+- PROJ then sends requests to `https://cdn.proj.org` (the grid file server of the PROJ project, a
+  third party) when a transformation that uses a grid is created or first used. The names of the
+  files it asks for show which region you are working on.
+- When that server cannot be reached, PROJ waits for the request to fail and then transforms
+  without the grid, so the same call can give different results online and offline. With the
+  default (no network) the result does not depend on the connection.
+- Without the grid PROJ uses the best transformation it has in `proj.db`. Measured for
+  NAD27 / UTM zone 11N (`EPSG:26711`) at Los Angeles: 1.5 m between the two results.
+- The setting holds for the whole process (or page) and is fixed when the runtime starts. A later
+  call that asks for a different value throws.
+
+**Definition texts.** The `proj4` of a row you pass to `transformLonLatArrayToProjected`,
+`transformLonLatToCandidate` or `createCandidateTransformer`, and the `proj4` / `pipeline` of a
+`userProjection` row, are handed to PROJ. Atlas does not hand over a definition that contains a
+URL (`://`), is longer than 16,384 characters, or is not a string: the transformation gives
+`null`, and such a row of a `userProjection` file is skipped. If the definitions come from people
+you do not trust, also limit how many different ones a process accepts (see the known limit below).
+
+**`userProjection`.** This option names a JSON file of extra projection definitions, and Atlas
+reads whatever it names. Pass a fixed value or one you have checked; do not pass on a string a user
+typed.
+
+- Accepted: `data:`, `file:` and `https:` URLs, at most 8 MiB. `http:` is accepted only for
+  `localhost` and, in a browser, for the page's own origin. A plain path is read as a local file.
+- The file is an array of rows, or an object with that array in `projections`. A row needs
+  `authority`, `code` and `name` (non-empty strings), `bbox` (`west`, `south`, `east`, `north` as
+  finite numbers) and `proj4` or `pipeline`; `areaName`, `deprecated`, `wkt2`, `isApproximate`,
+  `source` and `unit` are optional. Rows that do not fit are skipped.
+- A file that cannot be read, is not JSON or holds no such array makes the search throw. The
+  message names the file without credentials, query string or content.
+
+**`projWasmAssetBaseUrl`.** In a browser the proj-wasm runtime (worker scripts and WebAssembly,
+that is, code) is loaded from this URL. Use a fixed value, never one taken from user input. While
+the runtime starts, Atlas sends the page's `fetch` requests for `proj.db` and `proj.ini` to this
+base; the page's own `fetch` is back in place once it has started.
+
 ### Known limit of proj-wasm 0.1.0-alpha8
 
 proj-wasm 0.1.0-alpha8 does not get back all memory when a PROJ object is released, and the wasm
@@ -203,6 +253,15 @@ keeps its PROJ objects instead of creating them again:
   measured).
 
 Only a process that keeps cycling through more than 4,096 different targets creates objects again.
+
+A target is told apart by its definition text. What Atlas remembers per definition (what it read
+from it, its transformation, and the answer that no transformation exists) is kept for the 4,096
+most recently used definitions, so that memory does not grow without bound; a definition that has
+been dropped is read again when it comes back. Every new definition still creates PROJ objects, so
+a process that keeps receiving different definitions will fill the wasm memory in the end (110,000
+different definitions in one process were measured without a failure). If definitions come from
+outside, limit how many different ones a process accepts.
+
 If the memory does run out, the calls throw instead of returning `null`; start a new process (or
 reload the page) then.
 
@@ -215,7 +274,7 @@ Everything below is exported from `@c4h/atlas`.
 | Name | What it does |
 |---|---|
 | `listProjectedCrsFromProjWasm(options)` | Lists projected CRS candidates whose area of use contains `options.extent` (see Basic Usage). Returns `ProjectedCrsInfo[]`. |
-| `initializeProjWasmRuntime(options?)` | Loads the bundled proj-wasm runtime ahead of the first search. Optional; the other calls load it on demand. |
+| `initializeProjWasmRuntime(options?)` | Loads the bundled proj-wasm runtime ahead of the first search. Optional; the other calls load it on demand. `enableNetwork: true` lets PROJ download grid files (see Network access and untrusted input). |
 | `transformLonLatArrayToProjected(target, points, options?)` | Transforms lon/lat degrees (lon-lat order) into `[easting, northing]` of one candidate, in metres only. |
 | `transformLonLatToCandidate(target, points, options?)` | Transforms lon/lat degrees (lon-lat order) into the coordinates of one candidate and returns them with their linear unit (`{ points, unit }`; see Units). |
 | `createCandidateTransformer(rows, options?)` | Builds an `AtlasCandidateTransformer` for Teiresias' `estimateCrs` (see Using Atlas with Teiresias). |
@@ -238,7 +297,7 @@ Everything below is exported from `@c4h/atlas`.
 | `LinearUnit` | A linear unit of coordinates: `{ name, metresPerUnit }`, the number of metres in one unit. |
 | `ProjectedCrsExclusion` | A row left out of a search, with the reason (given to `onExcluded`). |
 | `ListProjectedCrsFromProjWasmOptions` | Options of `listProjectedCrsFromProjWasm`. |
-| `InitializeProjWasmRuntimeOptions` | Options of `initializeProjWasmRuntime` (`projWasmAssetBaseUrl`). |
+| `InitializeProjWasmRuntimeOptions` | Options of `initializeProjWasmRuntime` (`projWasmAssetBaseUrl`, `enableNetwork`). |
 | `TransformLonLatToProjectedOptions` | Options of `transformLonLatArrayToProjected`, `transformLonLatToCandidate` and `createCandidateTransformer`. |
 | `AtlasCandidateTransformer` | The transformer `createCandidateTransformer` returns: a plain point list for a candidate in metres, otherwise `{ points, unit }`, or `null`. |
 | `AtlasGeoBasisLike` | The geo basis a transformer receives (compatible with Teiresias' `GeoBasis`). |
@@ -292,3 +351,6 @@ Pressing a preset puts markers on the four corners of its extent, fits the map t
 ## License
 
 MIT License. See [LICENSE](./LICENSE).
+
+The npm package also redistributes runtime files of proj-wasm (PROJ compiled to WebAssembly, `proj.db`
+and the worker scripts). Their notices are in [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).

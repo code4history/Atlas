@@ -179,6 +179,57 @@ const rows = await listProjectedCrsFromProjWasm({
 1 つの process の中では、proj.db の一覧と行ごとの WKT2・PROJ 文字列を 1 回だけ作り、以後の検索で
 使い回します。
 
+### 通信と信頼できない入力
+
+**PROJ と通信。** Atlas は既定では PROJ に通信をさせません。検索も変換もリクエストを出さず、同梱の
+`proj.db` だけで計算します。
+
+変換の中には、格子ファイル（測地系変換の格子）を使うと精度が上がるものがあります。PROJ に必要な
+格子を取得させるには、ほかの Atlas の呼び出しより前に `enableNetwork: true` で実行時を起動します。
+
+```ts
+import { initializeProjWasmRuntime } from "@c4h/atlas";
+
+await initializeProjWasmRuntime({ enableNetwork: true });
+```
+
+- このとき PROJ は、格子を使う変換を作るとき・最初に使うときに `https://cdn.proj.org`（PROJ
+  プロジェクトの格子ファイルのサーバー。第三者）へリクエストを出します。求めるファイルの名前から、
+  どの地域を扱っているかが相手に分かります。
+- そのサーバーに届かないとき、PROJ はリクエストの失敗を待ってから格子なしで変換します。そのため
+  同じ呼び出しでも、つながっているときと、いないときで結果が変わることがあります。既定（通信なし）
+  では、結果は接続の状態に左右されません。
+- 格子が無いとき、PROJ は `proj.db` にある中で最良の変換を使います。NAD27 / UTM zone 11N
+  （`EPSG:26711`）のロサンゼルスでの実測では、2 つの結果の差は 1.5 m でした。
+- この設定は process（またはページ）全体に効き、実行時を起動したときに決まります。後から違う値を
+  求める呼び出しは throw します。
+
+**定義の文字列。** `transformLonLatArrayToProjected`・`transformLonLatToCandidate`・
+`createCandidateTransformer` に渡す行の `proj4` と、`userProjection` の行の `proj4`／`pipeline` は
+PROJ に渡ります。Atlas は、URL（`://`）を含む定義・16,384 文字を超える定義・文字列でない定義を
+PROJ に渡しません。変換は `null` を返し、`userProjection` のファイルのそういう行は読み飛ばします。
+定義が信頼できない相手から来る場合は、1 つの process が受け付ける定義の種類の数も制限してください
+（下の既知の上限を参照）。
+
+**`userProjection`。** この option は、追加の投影定義の JSON ファイルを指します。Atlas は指された
+ものをそのまま読みます。固定の値か、確かめた値を渡してください。利用者が入力した文字列をそのまま
+渡さないでください。
+
+- 受け付けるのは `data:`・`file:`・`https:` の URL で、大きさは 8 MiB までです。`http:` は
+  `localhost` と、ブラウザではページ自身の origin だけを受け付けます。素のパスはローカルの
+  ファイルとして読みます。
+- ファイルは行の配列か、その配列を `projections` に持つ object です。行には `authority`・`code`・
+  `name`（空でない文字列）、`bbox`（`west`・`south`・`east`・`north` が有限の数値）、`proj4` か
+  `pipeline` が必要です。`areaName`・`deprecated`・`wkt2`・`isApproximate`・`source`・`unit` は
+  省略できます。形の合わない行は読み飛ばします。
+- 読めないファイル・JSON でないファイル・行の配列を持たないファイルでは、検索が throw します。
+  メッセージには、資格情報・クエリ文字列・中身を除いたファイルの名前だけが入ります。
+
+**`projWasmAssetBaseUrl`。** ブラウザでは、proj-wasm の実行時（worker の script と WebAssembly。
+つまりコード）をこの URL から読み込みます。固定の値を使い、利用者の入力から決めないでください。
+実行時を起動している間だけ、Atlas はページの `fetch` のうち `proj.db` と `proj.ini` への
+リクエストをこの場所へ向けます。起動が終わると、ページの `fetch` は元に戻ります。
+
 ### proj-wasm 0.1.0-alpha8 の既知の上限
 
 proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は返さず、wasm のメモリは 2 GiB が
@@ -190,8 +241,16 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
   ごとに変換を 1 つ保持します（4,096 個まで。それを越えると最も前に使ったものから解放します）。
   そのため、同じ target への呼び出しを繰り返してもメモリは尽きません（1 つの process で 21 万回を実測）。
 
-4,096 個を越える種類の target を回し続ける process だけが、object を作り直します。それでもメモリが
-尽きたときは、`null` ではなく throw します。そのときは process を作り直して（ページを開き直して）
+4,096 個を越える種類の target を回し続ける process だけが、object を作り直します。
+
+target は定義の文字列で区別します。定義ごとに Atlas が覚えるもの（定義を読んだ結果・変換・「変換が
+無い」という答え）は、直近に使った 4,096 個の定義の分だけ保持し、際限なく増えないようにしています。
+外れた定義は、次に来たときに読み直します。それでも、新しい定義が来るたびに PROJ object を作るので、
+違う定義を受け取り続ける process は、いずれ wasm のメモリを使い切ります（1 つの process で 11 万
+種類の定義を流して、失敗が無いことを実測）。定義が外から来る場合は、1 つの process が受け付ける
+定義の種類の数を制限してください。
+
+メモリが尽きたときは、`null` ではなく throw します。そのときは process を作り直して（ページを開き直して）
 ください。
 
 ## API
@@ -203,7 +262,7 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 | 名前 | 働き |
 |---|---|
 | `listProjectedCrsFromProjWasm(options)` | 適用範囲が `options.extent` を含む投影 CRS の候補を列挙します（基本的な使い方を参照）。戻り値は `ProjectedCrsInfo[]` です。 |
-| `initializeProjWasmRuntime(options?)` | 同梱の proj-wasm を最初の検索より前に読み込みます。省略してよく、ほかの呼び出しが必要なときに読み込みます。 |
+| `initializeProjWasmRuntime(options?)` | 同梱の proj-wasm を最初の検索より前に読み込みます。省略してよく、ほかの呼び出しが必要なときに読み込みます。`enableNetwork: true` で PROJ に格子ファイルを取得させます（通信と信頼できない入力を参照）。 |
 | `transformLonLatArrayToProjected(target, points, options?)` | 経緯度（度・lon-lat 順）を 1 つの候補の `[easting, northing]` へ変換します（metre のときだけ点列を返します）。 |
 | `transformLonLatToCandidate(target, points, options?)` | 経緯度（度・lon-lat 順）を 1 つの候補の座標へ変換し、線形単位といっしょに `{ points, unit }` で返します（単位を参照）。 |
 | `createCandidateTransformer(rows, options?)` | Teiresias の `estimateCrs` に渡す `AtlasCandidateTransformer` を作ります（Teiresias と組み合わせるを参照）。 |
@@ -226,7 +285,7 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 | `LinearUnit` | 座標の線形単位 `{ name, metresPerUnit }`（1 単位が何 metre か）。 |
 | `ProjectedCrsExclusion` | 検索から外した行と理由（`onExcluded` に渡ります）。 |
 | `ListProjectedCrsFromProjWasmOptions` | `listProjectedCrsFromProjWasm` の option。 |
-| `InitializeProjWasmRuntimeOptions` | `initializeProjWasmRuntime` の option（`projWasmAssetBaseUrl`）。 |
+| `InitializeProjWasmRuntimeOptions` | `initializeProjWasmRuntime` の option（`projWasmAssetBaseUrl`・`enableNetwork`）。 |
 | `TransformLonLatToProjectedOptions` | `transformLonLatArrayToProjected`・`transformLonLatToCandidate`・`createCandidateTransformer` の option。 |
 | `AtlasCandidateTransformer` | `createCandidateTransformer` が返す変換関数。metre の候補なら plain な点列、別の単位の候補なら `{ points, unit }`、変換できなければ `null` を返します。 |
 | `AtlasGeoBasisLike` | 変換関数が受け取る座標の基準（Teiresias の `GeoBasis` と互換）。 |
@@ -280,3 +339,6 @@ proj-wasm 0.1.0-alpha8 は PROJ object を解放してもメモリを全部は�
 ## ライセンス
 
 MIT License です。[LICENSE](./LICENSE) を参照してください。
+
+npm のパッケージは proj-wasm の実行時ファイル（WebAssembly にした PROJ・`proj.db`・worker の script）も
+再配布しています。それらの著作権表示は [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) にあります。
