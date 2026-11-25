@@ -20,7 +20,8 @@
     "src",
     "data/crs/custom-projections.json",
     "README.md",
-    "README.ja.md"
+    "README.ja.md",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "engines": {
     "pnpm": ">=10",

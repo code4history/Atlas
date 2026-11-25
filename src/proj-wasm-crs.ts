@@ -1,4 +1,7 @@
 import type { CandidateCrsExtent } from "./crs-types.ts";
+import { loadCustomProjectionFile } from "./custom-projection-file.ts";
+import { isUsableDefinition } from "./definition-guard.ts";
+import { LruMap } from "./lru-map.ts";
 import { PjCache, withPj } from "./proj-handle.ts";
 import { projWasmExclusions } from "./proj-wasm-exclusions.ts";
 
@@ -58,9 +61,21 @@ export interface ListProjectedCrsFromProjWasmOptions {
   onshoreOnly?: boolean;
   bboxPaddingDeg?: number;
   includeCustomProjections?: boolean;
+  /**
+   * A JSON file of projection definitions to add to the result: a `data:`, `file:` or `https:` URL
+   * (`http:` only for localhost or, in a browser, the page's own origin), at most 8 MiB; redirects
+   * are not followed. Rows that are not well-formed, and rows whose definition Atlas does not hand
+   * to PROJ (a URL, a backslash, PROJJSON), are skipped.
+   *
+   * Pass a fixed value or one you have checked: Atlas reads whatever this names.
+   */
   userProjection?: string | URL;
   /** @deprecated Use userProjection with a file://, https://, or data: URI. */
   userProjectionFile?: string;
+  /**
+   * Where a browser loads the proj-wasm runtime files from (code included). Pass a fixed value,
+   * never one taken from user input. Only the first call that starts the runtime uses it.
+   */
   projWasmAssetBaseUrl?: string | URL;
   /**
    * Called once per search with the proj.db rows that matched the search but were left out:
@@ -72,10 +87,22 @@ export interface ListProjectedCrsFromProjWasmOptions {
 }
 
 export interface InitializeProjWasmRuntimeOptions {
+  /** See `ListProjectedCrsFromProjWasmOptions.projWasmAssetBaseUrl`. */
   projWasmAssetBaseUrl?: string | URL;
+  /**
+   * Let PROJ download the grid files a transformation needs (from `https://cdn.proj.org`).
+   * Default `false`: PROJ sends no request, and a transformation that would use a grid uses the
+   * best one PROJ has without it (for NAD27 / UTM zone 11N at Los Angeles the two differ by 1.5 m).
+   *
+   * The setting holds for the whole process (or page) and is fixed when the runtime starts, so
+   * call `initializeProjWasmRuntime({ enableNetwork: true })` before any other Atlas call. Asking
+   * for a value that differs from the one in effect throws.
+   */
+  enableNetwork?: boolean;
 }
 
 export interface TransformLonLatToProjectedOptions {
+  /** See `ListProjectedCrsFromProjWasmOptions.projWasmAssetBaseUrl`. */
   projWasmAssetBaseUrl?: string | URL;
 }
 
@@ -114,10 +141,6 @@ export interface CustomProjectionDefinition {
   unit?: LinearUnit;
 }
 
-interface CustomProjectionFile {
-  projections: CustomProjectionDefinition[];
-}
-
 const PJ_TYPE_PROJECTED_CRS = 15;
 /** `celestial_body.name` of the Earth in proj.db (PROJ's `Ellipsoid::EARTH`). */
 const EARTH_CELESTIAL_BODY_NAME = "Earth";
@@ -150,7 +173,9 @@ const LONLAT_WGS84_PROJ_STRING = "+proj=longlat +datum=WGS84 +no_defs +type=crs"
 let initPromise: Promise<void> | undefined;
 let projWasmModulePromise: Promise<typeof import("proj-wasm")> | undefined;
 let builtInCustomProjectionPromise: Promise<CustomProjectionDefinition[]> | undefined;
-let projWasmAssetResolverInstalled = false;
+/** Whether PROJ may use the network. Decided by the call that starts the runtime. */
+let projNetworkEnabled = false;
+let projContextPromise: Promise<unknown> | undefined;
 
 /**
  * proj.db の行の一覧と、行ごとの展開結果（WKT2・PROJ 文字列）を 1 process の中で使い回す。
@@ -187,18 +212,34 @@ function defaultRuntimeAssetBaseUrl(): URL {
   return url;
 }
 
-function installProjWasmAssetResolver(assetBaseUrl: string | URL = defaultRuntimeAssetBaseUrl()): void {
-  if (!isBrowserRuntime() || projWasmAssetResolverInstalled || typeof fetch !== "function") {
-    return;
+/**
+ * Runs `start` (the start-up of proj-wasm) and, in a browser, points the requests it makes for its
+ * runtime files at `assetBaseUrl` meanwhile.
+ *
+ * proj-wasm asks for `proj.db` and `proj.ini` next to its own module, which is not where a bundled
+ * application serves them. The page's `fetch` is replaced only while `start` runs and is put back
+ * afterwards, whether `start` succeeds or fails. If the page has installed its own `fetch` on top
+ * in the meantime, that one is left in place and the redirection underneath is switched off.
+ */
+async function withProjWasmAssetResolver<T>(
+  assetBaseUrl: string | URL = defaultRuntimeAssetBaseUrl(),
+  start: () => Promise<T>,
+): Promise<T> {
+  if (!isBrowserRuntime() || typeof fetch !== "function") {
+    return start();
   }
 
   const baseUrl = typeof assetBaseUrl === "string"
     ? new URL(assetBaseUrl, import.meta.url)
     : assetBaseUrl;
   (globalThis as { __ATLAS_PROJ_WASM_ASSET_BASE_URL__?: string }).__ATLAS_PROJ_WASM_ASSET_BASE_URL__ = baseUrl.href;
-  const originalFetch = globalThis.fetch.bind(globalThis);
+  const pageFetch = globalThis.fetch;
+  const originalFetch = pageFetch.bind(globalThis);
+  let redirecting = true;
 
-  globalThis.fetch = async (input, init) => {
+  const resolvingFetch: typeof fetch = async (input, init) => {
+    if (!redirecting) return originalFetch(input, init);
+
     const url = typeof input === "string"
       ? input
       : input instanceof URL
@@ -227,7 +268,13 @@ function installProjWasmAssetResolver(assetBaseUrl: string | URL = defaultRuntim
     return originalFetch(input, init);
   };
 
-  projWasmAssetResolverInstalled = true;
+  globalThis.fetch = resolvingFetch;
+  try {
+    return await start();
+  } finally {
+    redirecting = false;
+    if (globalThis.fetch === resolvingFetch) globalThis.fetch = pageFetch;
+  }
 }
 
 function loadProjWasm(): Promise<typeof import("proj-wasm")> {
@@ -238,13 +285,54 @@ function loadProjWasm(): Promise<typeof import("proj-wasm")> {
   return projWasmModulePromise;
 }
 
-async function ensureProjInitialized(options?: Pick<ListProjectedCrsFromProjWasmOptions, "projWasmAssetBaseUrl">): Promise<void> {
+async function ensureProjInitialized(options?: InitializeProjWasmRuntimeOptions): Promise<void> {
+  const requestedNetwork = options?.enableNetwork;
   if (!initPromise) {
-    installProjWasmAssetResolver(options?.projWasmAssetBaseUrl);
-    initPromise = loadProjWasm().then((proj) => proj.init({ workers: 1 }));
+    projNetworkEnabled = requestedNetwork ?? false;
+    initPromise = withProjWasmAssetResolver(
+      options?.projWasmAssetBaseUrl,
+      () => loadProjWasm().then((proj) => proj.init({ workers: 1 })),
+    );
+  } else if (requestedNetwork !== undefined && requestedNetwork !== projNetworkEnabled) {
+    throw new Error(
+      `The proj-wasm runtime has already started with enableNetwork: ${projNetworkEnabled}. ` +
+      "The setting is fixed when the runtime starts: pass enableNetwork to initializeProjWasmRuntime " +
+      "before any other Atlas call.",
+    );
   }
 
   return initPromise!;
+}
+
+/**
+ * The one PROJ context every PROJ object of Atlas is created in, with network access set as the
+ * runtime was started (off unless `enableNetwork: true` was asked for).
+ *
+ * proj-wasm 0.1.0-alpha8 turns network access on in every context it creates, including the ones
+ * it creates by itself for a call that names no context, and ignores the `network` option of
+ * `contextCreate` (measured). So Atlas creates its own context, switches the setting explicitly,
+ * reads it back, and passes the context to every call that creates a PROJ object. Calls that take
+ * a PROJ object use the context of that object.
+ */
+function projContext(proj: typeof import("proj-wasm")): Promise<unknown> {
+  if (!projContextPromise) {
+    const created = createProjContext(proj);
+    projContextPromise = created;
+    created.catch(() => {
+      if (projContextPromise === created) projContextPromise = undefined;
+    });
+  }
+  return projContextPromise;
+}
+
+async function createProjContext(proj: typeof import("proj-wasm")): Promise<unknown> {
+  const context = await proj.contextCreate();
+  const enabled = projNetworkEnabled ? 1 : 0;
+  await proj.projContextSetEnableNetwork({ context, enabled });
+  if ((await proj.projContextIsNetworkEnabled({ context })) !== enabled) {
+    throw new Error(`The PROJ context did not take the network setting (enableNetwork: ${projNetworkEnabled})`);
+  }
+  return context;
 }
 
 function normalizeLongitudeSegments(west: number, east: number): Array<[number, number]> {
@@ -305,7 +393,9 @@ async function expandProjectedCrsInfoOnce(row: ProjDatabaseRow): Promise<Project
 
 async function listProjDatabaseRows(proj: typeof import("proj-wasm")): Promise<ProjDatabaseRow[]> {
   if (!crsInfoListPromise) {
-    crsInfoListPromise = proj.projGetCrsInfoListFromDatabase({}) as Promise<ProjDatabaseRow[]>;
+    crsInfoListPromise = projContext(proj).then(
+      (context) => proj.projGetCrsInfoListFromDatabase({ context }) as Promise<ProjDatabaseRow[]>,
+    );
     crsInfoListPromise.catch(() => {
       crsInfoListPromise = undefined;
     });
@@ -316,7 +406,9 @@ async function listProjDatabaseRows(proj: typeof import("proj-wasm")): Promise<P
 async function expandProjectedCrsInfo(row: ProjDatabaseRow): Promise<ProjectedCrsInfo> {
   const proj = await loadProjWasm();
   const id = `${row.authName}:${row.code}`;
+  const context = await projContext(proj);
   const [wkt2, proj4] = await withPj(proj, () => proj.projCreateFromDatabase({
+    context,
     auth_name: row.authName,
     code: row.code,
     category: proj.PJ_CATEGORY_CRS,
@@ -436,56 +528,9 @@ export async function initializeProjWasmRuntime(
   await ensureProjInitialized(options);
 }
 
-function decodeDataUrl(href: string): string {
-  const match = href.match(/^data:.*?(;base64)?,(.*)$/);
-  if (!match) {
-    throw new Error(`Unsupported data URL for custom projection resource: ${href}`);
-  }
-
-  if (match[1]) {
-    if (typeof Buffer !== "undefined") {
-      return Buffer.from(match[2], "base64").toString("utf8");
-    }
-
-    const binary = atob(match[2]);
-    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
-  }
-
-  return decodeURIComponent(match[2]);
-}
-
-async function loadTextResource(resource: string | URL): Promise<string> {
-  const url = typeof resource === "string"
-    ? new URL(resource, import.meta.url)
-    : resource;
-  const href = url.href;
-
-  if (href.startsWith("data:")) {
-    return decodeDataUrl(href);
-  }
-
-  if (!href.startsWith("file:") && typeof fetch === "function") {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to load projection resource ${href}: ${response.status} ${response.statusText}`);
-    }
-    return response.text();
-  }
-
-  const nodeFsPromises = "node:fs/promises";
-  const { readFile } = await import(/* @vite-ignore */ nodeFsPromises) as typeof import("node:fs/promises");
-  return readFile(url, "utf8");
-}
-
-async function loadCustomProjectionFile(resource: string | URL): Promise<CustomProjectionDefinition[]> {
-  const raw = await loadTextResource(resource);
-  const parsed = JSON.parse(raw) as CustomProjectionDefinition[] | CustomProjectionFile;
-  return Array.isArray(parsed) ? parsed : parsed.projections;
-}
-
 async function loadBuiltInCustomProjections(): Promise<CustomProjectionDefinition[]> {
   if (!builtInCustomProjectionPromise) {
-    builtInCustomProjectionPromise = loadCustomProjectionFile(BUILTIN_CUSTOM_PROJECTIONS_URL);
+    builtInCustomProjectionPromise = loadCustomProjectionFile(BUILTIN_CUSTOM_PROJECTIONS_URL, { trusted: true });
   }
 
   return builtInCustomProjectionPromise;
@@ -548,6 +593,12 @@ export async function listProjectedCrsFromProjWasm(
   return results;
 }
 
+/**
+ * 定義の文字列ごとに覚えるもの（読んだ結果・変換の PJ・変換が無いという答え）の個数の上限。
+ * `area` なしの検索が返しうる行の数（地球以外の天体を含めて約 2,200）を余裕をもって覆う。
+ */
+const DEFINITION_MEMORY_CAPACITY = 4096;
+
 /** `projCsGetAxisInfo` の返却（proj-wasm 0.1.0-alpha8 の実測形状）。 */
 interface ProjAxisInfo {
   name: string;
@@ -584,8 +635,10 @@ interface ProjTargetInspection {
  * 定義の文字列ごとに 1 回だけ PJ を作って確かめ、単位まで覚えておく
  * （解放しても戻らない資源を、同じ target への変換のたびに使わないため）。
  * 検証が throw したとき（実行時の失敗）は結果を覚えず、次の呼び出しで確かめ直す。
+ * 覚えるのは直近に使った `DEFINITION_MEMORY_CAPACITY` 個まで（定義の文字列を外から受け続けても
+ * 増え続けないようにする）。追い出された定義は、次に使うときに確かめ直す。
  */
-const targetUnitCache = new Map<string, Promise<ProjTargetInspection>>();
+const targetUnitCache = new LruMap<string, Promise<ProjTargetInspection>>(DEFINITION_MEMORY_CAPACITY);
 
 function inspectTargetOnce(proj: typeof import("proj-wasm"), definition: string): Promise<ProjTargetInspection> {
   let pending = targetUnitCache.get(definition);
@@ -594,7 +647,7 @@ function inspectTargetOnce(proj: typeof import("proj-wasm"), definition: string)
     pending = created;
     targetUnitCache.set(definition, created);
     created.catch(() => {
-      if (targetUnitCache.get(definition) === created) targetUnitCache.delete(definition);
+      if (targetUnitCache.peek(definition) === created) targetUnitCache.delete(definition);
     });
   }
   return pending;
@@ -620,7 +673,8 @@ async function readTarget(
   proj: typeof import("proj-wasm"),
   definition: string,
 ): Promise<ProjTargetInspection> {
-  return withPj(proj, () => proj.projCreate({ definition }), async (pj) => {
+  const context = await projContext(proj);
+  return withPj(proj, () => proj.projCreate({ context, definition }), async (pj) => {
     if (pj === undefined || pj === null) return { kind: "unreadable", unit: null };
     if (!(await proj.projIsCrs({ obj: pj }))) return { kind: "non-crs", unit: null };
 
@@ -716,18 +770,19 @@ function isNoOperationError(error: unknown): boolean {
   return error instanceof Error && NO_OPERATION_ERROR.test(error.stack ?? "");
 }
 
-/** pipeline を作れないと PROJ が答えた target。作り直しを試さないよう覚えておく（定義の文字列ごと）。 */
-const targetsWithoutOperation = new Set<string>();
+/**
+ * pipeline を作れないと PROJ が答えた target。作り直しを試さないよう覚えておく（定義の文字列ごと・
+ * 直近の `DEFINITION_MEMORY_CAPACITY` 個まで）。
+ */
+const targetsWithoutOperation = new LruMap<string, true>(DEFINITION_MEMORY_CAPACITY);
 
 /**
  * 変換の pipeline（lon/lat → target）の PJ を target の定義の文字列ごとに保持して使い回す。
  * source は常に `LONLAT_WGS84_PROJ_STRING` なので、target の文字列だけで決まる。
- * 上限は `area` なしの検索が返しうる行の数（地球以外の天体を含めて約 2,200）を余裕をもって覆う数にしてある。
- * 上限を越えると最も古い PJ を解放する（作り直すと解放しても戻らない資源をまた使うので、
+ * 上限（`DEFINITION_MEMORY_CAPACITY`）を越えると最も古い PJ を解放する（作り直すと解放しても戻らない資源をまた使うので、
  * 普段の使い方では追い出しが起きない大きさにする）。
  */
-const PIPELINE_CACHE_CAPACITY = 4096;
-const pipelineCache = new PjCache<string>(PIPELINE_CACHE_CAPACITY);
+const pipelineCache = new PjCache<string>(DEFINITION_MEMORY_CAPACITY);
 
 /** `transformLonLatToCandidate` の返却（1 回の変換で決まる点列と単位）。 */
 interface CandidateTransform {
@@ -803,6 +858,10 @@ async function transformLonLatToCandidateOnce(
     if (!Number.isFinite(point[0]) || !Number.isFinite(point[1])) return null;
   }
 
+  // step 1': PROJ に渡してよい定義か（`isUsableDefinition`）。渡せない定義は
+  //   PROJ が読めない定義と同じ扱い（業務的に変換不能）。
+  if (!isUsableDefinition(target.proj4)) return null;
+
   await ensureProjInitialized(options);
   const proj = await loadProjWasm();
 
@@ -834,40 +893,46 @@ async function transformLonLatToCandidateOnce(
  * 定義の CRS へ lon/lat から変換する（`projCreateCrsToCrs` の CRS → CRS の変換を、`PJ_FWD` で流す）。
  * 変換の PJ は定義の文字列ごとに使い回す。
  */
-function transformWithCrsOnce(
+async function transformWithCrsOnce(
   proj: typeof import("proj-wasm"),
   definition: string,
   points: ReadonlyArray<readonly [number, number]>,
 ): Promise<Array<[number, number]> | null> {
-  if (targetsWithoutOperation.has(definition)) return Promise.resolve(null);
+  if (targetsWithoutOperation.get(definition) === true) return null;
 
-  return pipelineCache.use(proj, definition, () => proj.projCreateCrsToCrs({
-    source_crs: LONLAT_WGS84_PROJ_STRING,
-    target_crs: definition,
-  }), (operation) => transformPointsOnce(proj, operation, points, proj.PJ_FWD)
-  ).catch((error: unknown) => {
+  const context = await projContext(proj);
+  try {
+    return await pipelineCache.use(proj, definition, () => proj.projCreateCrsToCrs({
+      context,
+      source_crs: LONLAT_WGS84_PROJ_STRING,
+      target_crs: definition,
+    }), (operation) => transformPointsOnce(proj, operation, points, proj.PJ_FWD));
+  } catch (error) {
     if (!isNoOperationError(error)) throw error;
-    targetsWithoutOperation.add(definition);
+    targetsWithoutOperation.set(definition, true);
     return null;
-  });
+  }
 }
 
 /**
  * 定義の pipeline を逆向き（`PJ_INV`）に流す。`pipeline:` の接頭辞で、CRS → CRS の変換の key と
  * 混ざらないようにする。PROJ が定義を読めない・変換が無いと答えたときは `null`（業務的に変換不能）。
  */
-function transformWithPipelineOnce(
+async function transformWithPipelineOnce(
   proj: typeof import("proj-wasm"),
   definition: string,
   points: ReadonlyArray<readonly [number, number]>,
 ): Promise<Array<[number, number]> | null> {
   const key = `pipeline:${definition}`;
-  return pipelineCache.use(proj, key, () => proj.projCreate({ definition }),
-    (operation) => transformPointsOnce(proj, operation, points, proj.PJ_INV),
-  ).catch((error: unknown) => {
+  const context = await projContext(proj);
+  try {
+    return await pipelineCache.use(proj, key, () => proj.projCreate({ context, definition }),
+      (operation) => transformPointsOnce(proj, operation, points, proj.PJ_INV),
+    );
+  } catch (error) {
     if (!isUnreadableDefinitionError(error) && !isNoOperationError(error)) throw error;
     return null;
-  });
+  }
 }
 
 /**

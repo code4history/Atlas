@@ -37,6 +37,21 @@
   touch-action: none;
 }
 
+.atlas-map-attribution {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #333;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.atlas-map-attribution a {
+  color: #0078a8;
+}
+
 #map-canvas.dragging {
   cursor: grabbing;
 }
