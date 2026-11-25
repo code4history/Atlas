@@ -206,8 +206,9 @@ await initializeProjWasmRuntime({ enableNetwork: true });
 
 **定義の文字列。** `transformLonLatArrayToProjected`・`transformLonLatToCandidate`・
 `createCandidateTransformer` に渡す行の `proj4` と、`userProjection` の行の `proj4`／`pipeline` は
-PROJ に渡ります。Atlas は、URL（`://`）を含む定義・16,384 文字を超える定義・文字列でない定義を
-PROJ に渡しません。変換は `null` を返し、`userProjection` のファイルのそういう行は読み飛ばします。
+PROJ に渡ります。定義は PROJ 文字列（CRS か pipeline）か WKT で書きます。PROJJSON は対象外です。
+Atlas は、URL（`://`）かバックスラッシュを含む定義・`{` か `[` で始まる定義（PROJJSON）・16,384 文字を
+超える定義・文字列でない定義を PROJ に渡しません。変換は `null` を返し、`userProjection` のファイルのそういう行は読み飛ばします。
 定義が信頼できない相手から来る場合は、1 つの process が受け付ける定義の種類の数も制限してください
 （下の既知の上限を参照）。
 
@@ -217,7 +218,7 @@ PROJ に渡しません。変換は `null` を返し、`userProjection` のフ�
 
 - 受け付けるのは `data:`・`file:`・`https:` の URL で、大きさは 8 MiB までです。`http:` は
   `localhost` と、ブラウザではページ自身の origin だけを受け付けます。素のパスはローカルの
-  ファイルとして読みます。
+  ファイルとして読みます。転送（リダイレクト）には従いません。
 - ファイルは行の配列か、その配列を `projections` に持つ object です。行には `authority`・`code`・
   `name`（空でない文字列）、`bbox`（`west`・`south`・`east`・`north` が有限の数値）、`proj4` か
   `pipeline` が必要です。`areaName`・`deprecated`・`wkt2`・`isApproximate`・`source`・`unit` は

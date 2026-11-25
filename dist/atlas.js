@@ -98,7 +98,9 @@ function X0(e) {
 }
 const r0 = 16384;
 function L(e) {
-  return typeof e == "string" && e.length > 0 && e.length <= r0 && !e.includes("://");
+  if (typeof e != "string" || e.length === 0 || e.length > r0 || e.includes("://") || e.includes("\\")) return !1;
+  const t = e.trimStart()[0];
+  return t !== "{" && t !== "[";
 }
 const N = 8 * 1024 * 1024, n0 = 3e4, W = 200, A0 = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "[::1]"]);
 function G(e) {
@@ -157,7 +159,7 @@ async function s0(e) {
   const t = typeof AbortSignal < "u" && typeof AbortSignal.timeout == "function" ? AbortSignal.timeout(n0) : void 0;
   let I;
   try {
-    I = await fetch(e, t === void 0 ? void 0 : { signal: t });
+    I = await fetch(e, { redirect: "error", ...t === void 0 ? {} : { signal: t } });
   } catch {
     throw new Error(`Failed to load projection resource ${G(e)}`);
   }

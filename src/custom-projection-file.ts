@@ -92,7 +92,8 @@ async function fetchText(url: URL): Promise<string> {
     : undefined;
   let response: Response;
   try {
-    response = await fetch(url, signal === undefined ? undefined : { signal });
+    // A redirect is a failure: the location was checked for `url`, not for wherever it points.
+    response = await fetch(url, { redirect: "error", ...(signal === undefined ? {} : { signal }) });
   } catch {
     // The reason given by `fetch` can repeat the full URL; keep it out of the message.
     throw new Error(`Failed to load projection resource ${describeResource(url)}`);

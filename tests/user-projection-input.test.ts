@@ -3,6 +3,9 @@
  * rows of it are used. The real engine runs (the search needs proj.db); `fetch` is replaced so no
  * request leaves the process.
  */
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { extractWktName } from "../src/crs-seed.ts";
@@ -160,6 +163,32 @@ describe("userProjection: where it may be read from", { timeout: PROJ_WASM_TEST_
       await expect(search(refused), refused).rejects.toThrow(/not allowed/);
     }
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not follow a redirect", async () => {
+    const requested: string[] = [];
+    const server = createServer((request, response) => {
+      requested.push(request.url ?? "");
+      if (request.url === "/moved.json") {
+        response.writeHead(302, { location: "/defs.json" });
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ projections: [row("SERVED")] }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      // The file itself is read ...
+      expect((await search(`${origin}/defs.json`)).map((candidate) => candidate.id)).toEqual(["USER:SERVED"]);
+      // ... but an answer that points somewhere else is a failure, not a second request.
+      requested.length = 0;
+      await expect(search(`${origin}/moved.json`)).rejects.toThrow(/Failed to load projection resource/);
+      expect(requested).toEqual(["/moved.json"]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   it("keeps credentials and the query string out of the error message", async () => {

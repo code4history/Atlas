@@ -29,9 +29,56 @@ vi.mock("proj-wasm", async (importOriginal) => {
   return { ...actual, projCreate: record("projCreate"), projCreateCrsToCrs: record("projCreateCrsToCrs") };
 });
 
-const { initializeProjWasmRuntime, transformLonLatArrayToProjected, transformLonLatToCandidate } = await import(
-  "../src/proj-wasm-crs.ts"
-);
+const {
+  initializeProjWasmRuntime,
+  listProjectedCrsFromProjWasm,
+  transformLonLatArrayToProjected,
+  transformLonLatToCandidate,
+} = await import("../src/proj-wasm-crs.ts");
+
+/**
+ * A coordinate operation written as PROJJSON whose file parameter holds `file`, inserted as it is
+ * (so `file` may use the escapes of a JSON string).
+ */
+function projJsonOperation(file: string): string {
+  const geographic = (name: string, datum: string, ellipsoid: Record<string, unknown>) => ({
+    type: "GeographicCRS",
+    name,
+    datum: { type: "GeodeticReferenceFrame", name: datum, ellipsoid },
+    coordinate_system: {
+      subtype: "ellipsoidal",
+      axis: [
+        { name: "Geodetic latitude", abbreviation: "Lat", direction: "north", unit: "degree" },
+        { name: "Geodetic longitude", abbreviation: "Lon", direction: "east", unit: "degree" },
+      ],
+    },
+  });
+  return JSON.stringify({
+    type: "Transformation",
+    name: "test operation",
+    source_crs: geographic("NAD27", "North American Datum 1927", {
+      name: "Clarke 1866",
+      semi_major_axis: 6378206.4,
+      semi_minor_axis: 6356583.8,
+    }),
+    target_crs: geographic("NAD83", "North American Datum 1983", {
+      name: "GRS 1980",
+      semi_major_axis: 6378137,
+      inverse_flattening: 298.257222101,
+    }),
+    method: { name: "NTv2", id: { authority: "EPSG", code: 9615 } },
+    parameters: [{
+      name: "Latitude and longitude difference file",
+      value: "@@FILE@@",
+      id: { authority: "EPSG", code: 8656 },
+    }],
+  }).replace("@@FILE@@", file);
+}
+
+/** Spellings of `base` that a JSON parser reads back as `base`. */
+function jsonSpellings(url: string): string[] {
+  return [url.replace("://", ":\\/\\/"), url.replace("://", "\\u003a//")];
+}
 
 const PROJ_WASM_TEST_TIMEOUT_MS = 30_000;
 
@@ -87,5 +134,48 @@ describe("PROJ network access as an opt-in", { timeout: PROJ_WASM_TEST_TIMEOUT_M
     expect(converted).toBeNull();
     expect(received).toEqual([]);
     expect(recorded.creations.length).toBe(before);
+  });
+
+  it("gives null for a definition in a JSON form, however the file name in it is spelled", async () => {
+    const before = recorded.creations.length;
+    for (const file of [`${base}/plain.gsb`, ...jsonSpellings(`${base}/spelled.gsb`), "relative.gsb"]) {
+      const converted = await transformLonLatToCandidate({
+        id: "TEST:JSON-FORM",
+        proj4: projJsonOperation(file),
+        unit: { name: "metre", metresPerUnit: 1 },
+      }, [[-118.25, 34.05]]);
+      expect(converted, file).toBeNull();
+    }
+
+    expect(received).toEqual([]);
+    expect(recorded.creations.length).toBe(before);
+  });
+
+  it("leaves a user projection row with such a definition out of the search", async () => {
+    const extent = { west: -119, south: 33, east: -117, north: 35 };
+    const row = (code: string, definition: Record<string, unknown>) => ({
+      authority: "USER",
+      code,
+      name: `User ${code}`,
+      areaName: "JSON Form Test Area",
+      bbox: extent,
+      unit: { name: "metre", metresPerUnit: 1 },
+      ...definition,
+    });
+    const [spelled] = jsonSpellings(`${base}/row.gsb`);
+    const rows = await listProjectedCrsFromProjWasm({
+      extent,
+      area: "JSON Form Test Area",
+      bboxPaddingDeg: 0,
+      userProjection: `data:application/json,${encodeURIComponent(JSON.stringify([
+        row("JSON-PIPELINE", { pipeline: projJsonOperation(spelled) }),
+        row("JSON-PROJ4", { proj4: projJsonOperation(spelled) }),
+        row("PLAIN", { proj4: "+proj=utm +zone=11 +ellps=GRS80 +units=m +no_defs +type=crs" }),
+      ]))}`,
+    });
+
+    expect(rows.map((candidate) => candidate.id)).toEqual(["USER:PLAIN"]);
+    for (const candidate of rows) await transformLonLatToCandidate(candidate, [[-118.25, 34.05]]);
+    expect(received).toEqual([]);
   });
 });

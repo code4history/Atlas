@@ -54,8 +54,9 @@ export interface ListProjectedCrsFromProjWasmOptions {
     includeCustomProjections?: boolean;
     /**
      * A JSON file of projection definitions to add to the result: a `data:`, `file:` or `https:` URL
-     * (`http:` only for localhost or, in a browser, the page's own origin), at most 8 MiB. Rows that
-     * are not well-formed, and rows whose definition contains a URL, are skipped.
+     * (`http:` only for localhost or, in a browser, the page's own origin), at most 8 MiB; redirects
+     * are not followed. Rows that are not well-formed, and rows whose definition Atlas does not hand
+     * to PROJ (a URL, a backslash, PROJJSON), are skipped.
      *
      * Pass a fixed value or one you have checked: Atlas reads whatever this names.
      */

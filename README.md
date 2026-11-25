@@ -217,9 +217,10 @@ await initializeProjWasmRuntime({ enableNetwork: true });
 
 **Definition texts.** The `proj4` of a row you pass to `transformLonLatArrayToProjected`,
 `transformLonLatToCandidate` or `createCandidateTransformer`, and the `proj4` / `pipeline` of a
-`userProjection` row, are handed to PROJ. Atlas does not hand over a definition that contains a
-URL (`://`), is longer than 16,384 characters, or is not a string: the transformation gives
-`null`, and such a row of a `userProjection` file is skipped. If the definitions come from people
+`userProjection` row, are handed to PROJ. They are PROJ strings (a CRS or a pipeline) or WKT;
+PROJJSON is not supported. Atlas does not hand over a definition that contains a URL (`://`) or a
+backslash, starts with `{` or `[` (PROJJSON), is longer than 16,384 characters, or is not a string:
+the transformation gives `null`, and such a row of a `userProjection` file is skipped. If the definitions come from people
 you do not trust, also limit how many different ones a process accepts (see the known limit below).
 
 **`userProjection`.** This option names a JSON file of extra projection definitions, and Atlas
@@ -228,6 +229,7 @@ typed.
 
 - Accepted: `data:`, `file:` and `https:` URLs, at most 8 MiB. `http:` is accepted only for
   `localhost` and, in a browser, for the page's own origin. A plain path is read as a local file.
+  Redirects are not followed.
 - The file is an array of rows, or an object with that array in `projections`. A row needs
   `authority`, `code` and `name` (non-empty strings), `bbox` (`west`, `south`, `east`, `north` as
   finite numbers) and `proj4` or `pipeline`; `areaName`, `deprecated`, `wkt2`, `isApproximate`,

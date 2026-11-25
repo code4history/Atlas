@@ -61,6 +61,20 @@ describe("third-party notices in the tarball", () => {
     expect(notices).toContain("https://epsg.org/terms-of-use.html");
   });
 
+  it("carries the copyright notice and permission text of Emscripten and of the JSON library in PROJ", () => {
+    const notices = read(NOTICES);
+    const section = (title: string) => notices.split(new RegExp(`^## ${title}\\s*$`, "m"))[1]?.split(/^## /m)[0] ?? "";
+
+    const emscripten = words(section("Emscripten"));
+    expect(emscripten).toContain("Copyright (c) 2010-2014 Emscripten authors, see AUTHORS file.");
+    expect(emscripten).toContain("Permission is hereby granted, free of charge, to any person obtaining a copy");
+    expect(emscripten).toContain("University of Illinois/NCSA Open Source License");
+
+    const json = words(section("JSON for Modern C\\+\\+ \\(nlohmann/json\\)"));
+    expect(json).toContain("Copyright (c) 2013-2019 Niels Lohmann");
+    expect(json).toContain("Permission is hereby granted, free of charge, to any person obtaining a copy");
+  });
+
   for (const readme of ["README.md", "README.ja.md"]) {
     it(`${readme} points at the notices from its License section`, () => {
       const text = read(readme);
@@ -79,6 +93,7 @@ describe("network access and untrusted input in the README files", () => {
       expect(text).toContain("userProjection");
       expect(text).toContain("projWasmAssetBaseUrl");
       expect(text).toContain("://");
+      expect(text).toContain("PROJJSON");
     });
   }
 });

@@ -63,8 +63,9 @@ export interface ListProjectedCrsFromProjWasmOptions {
   includeCustomProjections?: boolean;
   /**
    * A JSON file of projection definitions to add to the result: a `data:`, `file:` or `https:` URL
-   * (`http:` only for localhost or, in a browser, the page's own origin), at most 8 MiB. Rows that
-   * are not well-formed, and rows whose definition contains a URL, are skipped.
+   * (`http:` only for localhost or, in a browser, the page's own origin), at most 8 MiB; redirects
+   * are not followed. Rows that are not well-formed, and rows whose definition Atlas does not hand
+   * to PROJ (a URL, a backslash, PROJJSON), are skipped.
    *
    * Pass a fixed value or one you have checked: Atlas reads whatever this names.
    */
@@ -857,7 +858,7 @@ async function transformLonLatToCandidateOnce(
     if (!Number.isFinite(point[0]) || !Number.isFinite(point[1])) return null;
   }
 
-  // step 1': PROJ に渡してよい定義か（文字列・長さの上限・URL を含まない）。渡せない定義は
+  // step 1': PROJ に渡してよい定義か（`isUsableDefinition`）。渡せない定義は
   //   PROJ が読めない定義と同じ扱い（業務的に変換不能）。
   if (!isUsableDefinition(target.proj4)) return null;
 
