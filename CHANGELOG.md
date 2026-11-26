@@ -3,7 +3,7 @@
 このプロジェクトの主な変更を記録します。版数は [Semantic Versioning](https://semver.org/) に従います。
 Notable changes to this project are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0-rc.2] - 2026-11-26
 
 ### Added
 - 初版。npm に `@c4h/atlas` として公開します。主な API は `listProjectedCrsFromProjWasm`（経緯度の範囲から投影 CRS の候補を列挙）、`transformLonLatArrayToProjected`（経緯度を候補の投影座標へ一括変換）、`createCandidateTransformer`（Teiresias の `estimateCrs` に渡す変換関数を作る）、`initializeProjWasmRuntime` です。全 export は README の API の節にあります。
