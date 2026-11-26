@@ -100,8 +100,10 @@ describe("network access and untrusted input in the README files", () => {
 
 describe("changelog", () => {
   it("says why the runtime dependency stays on a prerelease", () => {
-    const unreleased = read("CHANGELOG.md").split(/^## \[Unreleased\]\s*$/m)[1]?.split(/^## \[/m)[0] ?? "";
-    const lines = unreleased.split("\n").filter((line) => line.includes("0.1.0-alpha8") && /proj-wasm 0\.1\.0(?!-)/.test(line));
+    // The newest section: "## [Unreleased]" before a release, "## [<version>] - <date>" once the
+    // release commit has renamed it.
+    const newest = read("CHANGELOG.md").split(/^## \[/m)[1] ?? "";
+    const lines = newest.split("\n").filter((line) => line.includes("0.1.0-alpha8") && /proj-wasm 0\.1\.0(?!-)/.test(line));
     // One line per language.
     expect(lines.length).toBeGreaterThanOrEqual(2);
   });
